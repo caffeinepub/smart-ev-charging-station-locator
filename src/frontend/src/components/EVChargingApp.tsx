@@ -1,5 +1,6 @@
 import {
   BatteryCharging,
+  BookOpen,
   Locate,
   Navigation,
   RefreshCw,
@@ -11,8 +12,11 @@ import { AnimatePresence, motion } from "motion/react";
 // Leaflet is loaded via CDN in index.html — L is a global
 // eslint-disable-next-line @typescript-eslint/triple-slash-reference
 /// <reference path="../leaflet-global.d.ts" />
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { BookingSuccess } from "./BookingSuccess";
+import { MyBookings } from "./MyBookings";
+import { type BookingConfirmation, SlotBooking } from "./SlotBooking";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface UIStation {
@@ -56,79 +60,229 @@ function estimateChargeTime(
   return m > 0 ? `~${h} hr ${m} min` : `~${h} hour${h > 1 ? "s" : ""}`;
 }
 
-// ─── Station name banks (generic, works anywhere in world) ───────────────────
-const STATION_NAME_PREFIXES = [
-  "ChargeZone",
-  "EV Connect",
-  "Tata Power EV",
-  "Ather Grid",
-  "Kazam EV",
-  "Volttic EV",
-  "HPCL EV",
-  "BPCL EV Hub",
-  "Magenta Power",
-  "SunMobility",
-  "Statiq",
-  "ZipCharge",
-];
-const STATION_NAME_SUFFIXES = [
-  "Hub",
-  "Station",
-  "Point",
-  "Charging",
-  "Fast Charge",
-  "Network",
-];
-const CHARGE_TYPE_POOLS: string[][] = [
-  ["Fast Charging", "Slow Charging"],
-  ["Fast Charging"],
-  ["Slow Charging", "Battery Swapping"],
-  ["Fast Charging", "Slow Charging", "Battery Swapping"],
-  ["Slow Charging"],
-  ["Battery Swapping"],
-  ["Fast Charging", "Battery Swapping"],
+// ─── Station fetching via OpenStreetMap Overpass (primary, no key needed) ─────
+// Also tries multiple Overpass mirrors for reliability
+
+const OVERPASS_ENDPOINTS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
 ];
 
-function seededRandom(seed: number): () => number {
-  let s = seed;
-  return () => {
-    s = (s * 16807 + 0) % 2147483647;
-    return (s - 1) / 2147483646;
-  };
+// Known real stations confirmed by users — always shown regardless of API results
+const KNOWN_SEED_STATIONS: UIStation[] = [
+  {
+    id: "known-ather-bailhongal",
+    name: "Ather Grid Charging Station",
+    lat: 15.9795,
+    lng: 74.8573,
+    chargingTypes: ["Fast Charging", "Slow Charging"],
+    isAvailable: true,
+  },
+];
+
+function buildOverpassQuery(lat: number, lng: number, radiusM: number) {
+  return `[out:json][timeout:30];
+(
+  node["amenity"="charging_station"](around:${radiusM},${lat},${lng});
+  way["amenity"="charging_station"](around:${radiusM},${lat},${lng});
+  relation["amenity"="charging_station"](around:${radiusM},${lat},${lng});
+  node["ev_charging"="yes"](around:${radiusM},${lat},${lng});
+  node["amenity"="fuel"]["ev_charging"="yes"](around:${radiusM},${lat},${lng});
+  node["amenity"="service_station"](around:${radiusM},${lat},${lng});
+);
+out body center 30;`;
 }
 
-/** Generate 12 realistic stations scattered within ~3 km of user location */
-function generateNearbyStations(lat: number, lng: number): UIStation[] {
-  const rand = seededRandom(Math.round(lat * 1000 + lng * 1000));
-  const stations: UIStation[] = [];
+function overpassTagsToChargingTypes(tags: Record<string, string>): string[] {
+  const socket = (
+    tags["socket:type2"] ||
+    tags["socket:chademo"] ||
+    tags["socket:type2_combo"] ||
+    tags.socket ||
+    ""
+  ).toLowerCase();
+  const maxPower = Number(
+    tags["charging:maxpower"] || tags.maxpower || tags["socket:output"] || 0,
+  );
+  const types = new Set<string>();
 
-  for (let i = 0; i < 12; i++) {
-    // Random offset: 0.2km – 3km radius
-    const angle = rand() * 2 * Math.PI;
-    const distKm = 0.2 + rand() * 2.8;
-    const dLat = (distKm / 111.32) * Math.cos(angle);
-    const dLng =
-      (distKm / (111.32 * Math.cos((lat * Math.PI) / 180))) * Math.sin(angle);
+  if (
+    tags["socket:chademo"] ||
+    tags["socket:type2_combo"] ||
+    socket.includes("chademo") ||
+    socket.includes("ccs") ||
+    socket.includes("combo") ||
+    maxPower >= 22
+  ) {
+    types.add("Fast Charging");
+  }
+  if (
+    tags["socket:type2"] ||
+    socket.includes("type2") ||
+    socket.includes("schuko") ||
+    socket.includes("type1")
+  ) {
+    types.add("Slow Charging");
+  }
+  if (
+    socket.includes("swap") ||
+    (tags.operator || "").toLowerCase().includes("sun mob")
+  ) {
+    types.add("Battery Swapping");
+  }
+  if (types.size === 0) types.add("Slow Charging");
+  return Array.from(types);
+}
 
-    const prefix =
-      STATION_NAME_PREFIXES[Math.floor(rand() * STATION_NAME_PREFIXES.length)];
-    const suffix =
-      STATION_NAME_SUFFIXES[Math.floor(rand() * STATION_NAME_SUFFIXES.length)];
-    const types =
-      CHARGE_TYPE_POOLS[Math.floor(rand() * CHARGE_TYPE_POOLS.length)];
-    const isAvailable = rand() > 0.15; // 85% chance open
+async function fetchRealStations(
+  lat: number,
+  lng: number,
+): Promise<UIStation[]> {
+  // Try progressively wider radii: 10 km, then 25 km, then 50 km
+  const radii = [10000, 25000, 50000];
+  let fetchedStations: UIStation[] = [];
 
-    stations.push({
-      id: String(i + 1),
-      name: `${prefix} ${suffix} ${i + 1}`,
-      lat: lat + dLat,
-      lng: lng + dLng,
-      chargingTypes: types,
-      isAvailable,
-    });
+  for (const radius of radii) {
+    const query = buildOverpassQuery(lat, lng, radius);
+
+    for (const endpoint of OVERPASS_ENDPOINTS) {
+      try {
+        const res = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: `data=${encodeURIComponent(query)}`,
+          signal: AbortSignal.timeout(20000),
+        });
+
+        if (!res.ok) continue;
+
+        const data = await res.json();
+        const elements: Array<{
+          id: number;
+          lat?: number;
+          lon?: number;
+          center?: { lat: number; lon: number };
+          tags?: Record<string, string>;
+        }> = data?.elements ?? [];
+
+        if (elements.length === 0) continue;
+
+        const stations: UIStation[] = elements
+          .map((el, idx) => {
+            const elLat = el.lat ?? el.center?.lat;
+            const elLng = el.lon ?? el.center?.lon;
+            if (!elLat || !elLng) return null;
+            const tags = el.tags ?? {};
+            const name =
+              tags.name ||
+              tags["name:en"] ||
+              tags.brand ||
+              tags.operator ||
+              `EV Station ${idx + 1}`;
+            return {
+              id: `osm-${el.id}`,
+              name,
+              lat: elLat,
+              lng: elLng,
+              chargingTypes: overpassTagsToChargingTypes(tags),
+              isAvailable:
+                tags.operational_status !== "closed" && tags.access !== "no",
+            } as UIStation;
+          })
+          .filter((s): s is UIStation => s !== null);
+
+        if (stations.length > 0) {
+          fetchedStations = stations;
+          break; // found stations at this endpoint
+        }
+      } catch {
+        // try next endpoint
+      }
+      if (fetchedStations.length > 0) break;
+    }
+    if (fetchedStations.length > 0) break; // found stations at this radius
   }
 
-  return stations;
+  // If Overpass found nothing, try OCM as last resort
+  if (fetchedStations.length === 0) {
+    try {
+      const url = new URL("https://api.openchargemap.io/v3/poi/");
+      url.searchParams.set("output", "json");
+      url.searchParams.set("latitude", String(lat));
+      url.searchParams.set("longitude", String(lng));
+      url.searchParams.set("distance", "50");
+      url.searchParams.set("distanceunit", "km");
+      url.searchParams.set("maxresults", "30");
+      url.searchParams.set("compact", "false");
+      url.searchParams.set("verbose", "false");
+
+      const res = await fetch(url.toString(), {
+        signal: AbortSignal.timeout(15000),
+      });
+      if (res.ok) {
+        const data: Array<{
+          ID: number;
+          AddressInfo: { Title: string; Latitude: number; Longitude: number };
+          StatusType?: { IsOperational?: boolean };
+          Connections?: Array<{
+            ConnectionType?: { FormalName?: string; Title?: string };
+            LevelID?: number;
+            PowerKW?: number;
+          }>;
+        }> = await res.json();
+
+        if (Array.isArray(data) && data.length > 0) {
+          fetchedStations = data.map((item, idx) => {
+            const types = new Set<string>();
+            for (const conn of item.Connections ?? []) {
+              const name = (
+                conn.ConnectionType?.FormalName ??
+                conn.ConnectionType?.Title ??
+                ""
+              ).toLowerCase();
+              const level = conn.LevelID ?? 0;
+              const kw = conn.PowerKW ?? 0;
+              if (
+                name.includes("chademo") ||
+                name.includes("ccs") ||
+                name.includes("combo") ||
+                name.includes("dc") ||
+                level === 3 ||
+                kw >= 22
+              ) {
+                types.add("Fast Charging");
+              } else {
+                types.add("Slow Charging");
+              }
+            }
+            if (types.size === 0) types.add("Slow Charging");
+            return {
+              id: String(item.ID ?? idx + 1),
+              name: item.AddressInfo?.Title ?? `EV Station ${idx + 1}`,
+              lat: item.AddressInfo.Latitude,
+              lng: item.AddressInfo.Longitude,
+              chargingTypes: Array.from(types),
+              isAvailable: item.StatusType?.IsOperational !== false,
+            };
+          });
+        }
+      }
+    } catch {
+      // OCM also failed — will fall back to seed stations
+    }
+  }
+
+  // Merge seed stations: include seeds that are NOT already in fetchedStations
+  // (deduplicate by proximity — if within 0.1 km of a fetched station, skip the seed)
+  const seedsToAdd = KNOWN_SEED_STATIONS.filter((seed) => {
+    return !fetchedStations.some(
+      (fetched) =>
+        haversineDistance(seed.lat, seed.lng, fetched.lat, fetched.lng) < 0.1,
+    );
+  });
+
+  return [...fetchedStations, ...seedsToAdd];
 }
 
 // ─── Haversine distance (km) ──────────────────────────────────────────────────
@@ -234,7 +388,11 @@ const DEFAULT_CENTER: [number, number] = [20.5937, 78.9629]; // India center as 
 const DEFAULT_ZOOM = 5;
 
 // ─── Step types ───────────────────────────────────────────────────────────────
-type ModalStep = "charging-type" | "vehicle-registration" | "confirmed";
+type ModalStep =
+  | "charging-type"
+  | "vehicle-registration"
+  | "slot-booking"
+  | "booking-success";
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export function EVChargingApp() {
@@ -246,6 +404,8 @@ export function EVChargingApp() {
   const watchIdRef = useRef<number | null>(null);
   const stationListRef = useRef<HTMLDivElement>(null);
   const cardRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+  const stationsFetchedRef = useRef(false); // prevent duplicate fetches
+  const lastFetchLocRef = useRef<[number, number] | null>(null);
 
   const [userLocation, setUserLocation] = useState<[number, number] | null>(
     null,
@@ -254,6 +414,8 @@ export function EVChargingApp() {
     "loading" | "success" | "denied" | "unavailable"
   >("loading");
   const [stations, setStations] = useState<UIStation[]>([]);
+  const [stationsLoading, setStationsLoading] = useState(false);
+  const [stationsFetchError, setStationsFetchError] = useState(false);
   const [selectedStation, setSelectedStation] = useState<UIStation | null>(
     null,
   );
@@ -269,14 +431,77 @@ export function EVChargingApp() {
   const [selectedChargingType, setSelectedChargingType] = useState<string>("");
 
   // Vehicle registration
+  const [vehicleType, setVehicleType] = useState<"bike" | "car" | "other">(
+    "car",
+  );
   const [vehiclePresetIdx, setVehiclePresetIdx] = useState(0);
   const [vehicleName, setVehicleName] = useState("");
   const [customCapacity, setCustomCapacity] = useState("");
   const [currentCharge, setCurrentCharge] = useState("20");
 
-  // Confirmation result
-  const [chargeTimeEstimate, setChargeTimeEstimate] = useState("");
-  const [registrationId, setRegistrationId] = useState("");
+  // (chargeTimeEstimate and registrationId removed — slot booking flow replaces old "confirmed" step)
+  const [estimatedDurationMinutes, setEstimatedDurationMinutes] = useState(30);
+
+  // Booking confirmation
+  const [bookingConfirmation, setBookingConfirmation] =
+    useState<BookingConfirmation | null>(null);
+
+  // My Bookings panel
+  const [myBookingsOpen, setMyBookingsOpen] = useState(false);
+
+  // Station name map for my bookings panel
+  const stationNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const s of stations) {
+      map.set(s.id, s.name);
+    }
+    return map;
+  }, [stations]);
+
+  // ─── Load stations (reusable, called on GPS fix or manual refresh) ──────────
+  const loadStations = useCallback((loc: [number, number]) => {
+    // Show seed stations immediately so the user always sees at least the known station
+    setStations(KNOWN_SEED_STATIONS);
+    setSheetExpanded(true);
+    setStationsLoading(true);
+    setStationsFetchError(false);
+    stationsFetchedRef.current = true;
+    lastFetchLocRef.current = loc;
+    fetchRealStations(loc[0], loc[1]).then((real) => {
+      setStationsLoading(false);
+      // real always includes seed stations (merged inside fetchRealStations)
+      if (real.length > 0) {
+        setStations(real);
+        setSheetExpanded(true);
+        if (mapRef.current) {
+          // Zoom to show user + nearest stations
+          const nearest = real.slice(0, 5);
+          if (nearest.length > 0) {
+            let minLat = loc[0];
+            let maxLat = loc[0];
+            let minLng = loc[1];
+            let maxLng = loc[1];
+            for (const s of nearest) {
+              if (s.lat < minLat) minLat = s.lat;
+              if (s.lat > maxLat) maxLat = s.lat;
+              if (s.lng < minLng) minLng = s.lng;
+              if (s.lng > maxLng) maxLng = s.lng;
+            }
+            const bounds = L.latLngBounds(
+              L.latLng(minLat - 0.005, minLng - 0.005),
+              L.latLng(maxLat + 0.005, maxLng + 0.005),
+            );
+            mapRef.current.fitBounds(bounds, { padding: [60, 60] });
+          }
+        }
+      } else {
+        // Seeds are always included in real, but if somehow empty (shouldn't happen),
+        // still show seeds and don't show an error
+        setStations(KNOWN_SEED_STATIONS);
+        setSheetExpanded(true);
+      }
+    });
+  }, []);
 
   // Sorted + filtered stations
   const sortedStations = stations
@@ -298,6 +523,7 @@ export function EVChargingApp() {
   );
 
   // ─── Map init ───────────────────────────────────────────────────────────────
+  // biome-ignore lint/correctness/useExhaustiveDependencies: map init runs once on mount
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
@@ -344,28 +570,26 @@ export function EVChargingApp() {
             map.flyTo(loc, 15, { duration: 1.5 });
           }
 
-          // Generate stations near user on first fix
-          setStations((prev) => {
-            if (prev.length === 0)
-              return generateNearbyStations(loc[0], loc[1]);
-            return prev;
-          });
+          // Fetch real stations near user on first GPS fix (only once)
+          if (!stationsFetchedRef.current) {
+            loadStations(loc);
+          }
         },
         (err) => {
           setLocationStatus(
             err.code === err.PERMISSION_DENIED ? "denied" : "unavailable",
           );
-          // Use demo stations at default center if no GPS
-          setStations(
-            generateNearbyStations(DEFAULT_CENTER[0], DEFAULT_CENTER[1]),
-          );
+          // Try fetching real stations at default center if no GPS
+          if (!stationsFetchedRef.current) {
+            loadStations(DEFAULT_CENTER);
+          }
         },
         { enableHighAccuracy: true, maximumAge: 5000, timeout: 12000 },
       );
       watchIdRef.current = watchId;
     } else {
       setLocationStatus("unavailable");
-      setStations(generateNearbyStations(DEFAULT_CENTER[0], DEFAULT_CENTER[1]));
+      loadStations(DEFAULT_CENTER);
     }
 
     return () => {
@@ -464,12 +688,12 @@ export function EVChargingApp() {
     setModalStation(station);
     setModalStep("charging-type");
     setSelectedChargingType("");
+    setVehicleType("car");
     setVehiclePresetIdx(0);
     setVehicleName("");
     setCustomCapacity("");
     setCurrentCharge("20");
-    setChargeTimeEstimate("");
-    setRegistrationId("");
+    setBookingConfirmation(null);
     setSelectedStation(station);
   }, []);
 
@@ -489,26 +713,23 @@ export function EVChargingApp() {
       0,
       Math.min(100, Number.parseInt(currentCharge) || 20),
     );
-    const name = vehicleName.trim() || preset.label;
 
-    const vehicle: VehicleInfo = {
-      name,
-      batteryCapacityKwh: capacityKwh,
-      currentChargePercent: chargePercent,
-    };
+    // Calculate duration in minutes from estimate string
+    let durationMins = 30;
+    if (selectedChargingType === "Battery Swapping") {
+      durationMins = 5;
+    } else {
+      const powerKw = selectedChargingType === "Fast Charging" ? 50 : 7.4;
+      const neededKwh = capacityKwh * ((100 - chargePercent) / 100);
+      durationMins = Math.max(5, Math.round((neededKwh / powerKw) * 60));
+    }
+    setEstimatedDurationMinutes(durationMins);
 
-    const estimate = estimateChargeTime(vehicle, selectedChargingType);
-    const rid = `EV-${Date.now().toString(36).toUpperCase().slice(-6)}`;
-    setChargeTimeEstimate(estimate);
-    setRegistrationId(rid);
-    setModalStep("confirmed");
-
-    // Draw route
-    drawRoute(modalStation, selectedChargingType);
+    // Go to slot booking step instead of directly confirming
+    setModalStep("slot-booking");
   }, [
     modalStation,
     vehiclePresetIdx,
-    vehicleName,
     customCapacity,
     currentCharge,
     selectedChargingType,
@@ -869,6 +1090,30 @@ export function EVChargingApp() {
             >
               {sheetExpanded ? "Collapse" : "Show all"}
             </div>
+            <button
+              type="button"
+              data-ocid="station.refresh_button"
+              title="Refresh stations"
+              onClick={(e) => {
+                e.stopPropagation();
+                stationsFetchedRef.current = false;
+                const loc =
+                  lastFetchLocRef.current ?? userLocation ?? DEFAULT_CENTER;
+                loadStations(loc);
+                toast.info("Refreshing nearby stations...");
+              }}
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                padding: 4,
+                display: "flex",
+                alignItems: "center",
+                color: "#6b7280",
+              }}
+            >
+              <RefreshCw size={15} />
+            </button>
           </div>
         </button>
 
@@ -882,20 +1127,100 @@ export function EVChargingApp() {
             WebkitOverflowScrolling: "touch",
           }}
         >
-          {filteredStations.length === 0 && stations.length === 0 && (
+          {stationsLoading && (
             <div
               data-ocid="station.loading_state"
               style={{
                 textAlign: "center",
                 padding: "32px 16px",
-                color: "#9ca3af",
+                color: "#6b7280",
                 fontFamily: "Sora, system-ui, sans-serif",
                 fontSize: 14,
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 10,
               }}
             >
-              Getting your location to find nearby stations...
+              <div
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: "50%",
+                  border: "3px solid #1a73e8",
+                  borderTopColor: "transparent",
+                  animation: "spin 0.8s linear infinite",
+                }}
+              />
+              Fetching real nearby EV stations...
             </div>
           )}
+
+          {!stationsLoading && stationsFetchError && (
+            <div
+              data-ocid="station.error_state"
+              style={{
+                textAlign: "center",
+                padding: "32px 16px",
+                color: "#dc2626",
+                fontFamily: "Sora, system-ui, sans-serif",
+                fontSize: 13,
+                lineHeight: 1.6,
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 12,
+              }}
+            >
+              <span>
+                Could not find stations nearby. Check your internet connection.
+              </span>
+              <button
+                type="button"
+                data-ocid="station.retry_button"
+                onClick={() => {
+                  stationsFetchedRef.current = false;
+                  const loc =
+                    lastFetchLocRef.current ?? userLocation ?? DEFAULT_CENTER;
+                  loadStations(loc);
+                }}
+                style={{
+                  background: "#1a73e8",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 10,
+                  padding: "8px 18px",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  fontFamily: "Sora, system-ui, sans-serif",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                <RefreshCw size={14} /> Retry
+              </button>
+            </div>
+          )}
+
+          {!stationsLoading &&
+            !stationsFetchError &&
+            filteredStations.length === 0 &&
+            stations.length === 0 && (
+              <div
+                data-ocid="station.loading_state"
+                style={{
+                  textAlign: "center",
+                  padding: "32px 16px",
+                  color: "#9ca3af",
+                  fontFamily: "Sora, system-ui, sans-serif",
+                  fontSize: 14,
+                }}
+              >
+                Getting your location to find nearby stations...
+              </div>
+            )}
 
           {filteredStations.length === 0 && stations.length > 0 && (
             <div
@@ -1075,20 +1400,84 @@ export function EVChargingApp() {
               fontSize: 11,
               color: "#9ca3af",
               fontFamily: "Sora, system-ui, sans-serif",
+              display: "flex",
+              flexDirection: "column",
+              gap: 4,
+              alignItems: "center",
             }}
           >
-            © {year}.{" "}
-            <a
-              href={`https://caffeine.ai?utm_source=caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(window.location.hostname)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{ color: "#1a73e8", textDecoration: "none" }}
-            >
-              Built with ❤️ using caffeine.ai
-            </a>
+            <span>
+              Station data from{" "}
+              <a
+                href="https://openchargemap.org"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "#1a73e8", textDecoration: "none" }}
+              >
+                Open Charge Map
+              </a>{" "}
+              &{" "}
+              <a
+                href="https://www.openstreetmap.org"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "#1a73e8", textDecoration: "none" }}
+              >
+                OpenStreetMap
+              </a>
+            </span>
+            <span>
+              © {year}.{" "}
+              <a
+                href={`https://caffeine.ai?utm_source=caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(window.location.hostname)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "#1a73e8", textDecoration: "none" }}
+              >
+                Built with ❤️ using caffeine.ai
+              </a>
+            </span>
           </div>
         </div>
       </div>
+
+      {/* ── My Bookings FAB ── */}
+      <motion.button
+        type="button"
+        data-ocid="my_bookings.open_modal_button"
+        onClick={() => setMyBookingsOpen(true)}
+        initial={{ opacity: 0, scale: 0.8 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ delay: 0.5, type: "spring", damping: 16 }}
+        whileTap={{ scale: 0.93 }}
+        style={{
+          position: "fixed",
+          bottom: 236,
+          right: 16,
+          zIndex: 450,
+          background: "#fff",
+          border: "1.5px solid #e5e7eb",
+          borderRadius: 16,
+          width: 52,
+          height: 52,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          cursor: "pointer",
+          boxShadow: "0 4px 16px rgba(0,0,0,0.14)",
+          color: "#16a34a",
+        }}
+        title="My Bookings"
+      >
+        <BookOpen size={22} />
+      </motion.button>
+
+      {/* ── My Bookings Panel ── */}
+      <MyBookings
+        open={myBookingsOpen}
+        onClose={() => setMyBookingsOpen(false)}
+        stationNameMap={stationNameMap}
+      />
 
       {/* ── Modal (multi-step) ── */}
       <AnimatePresence>
@@ -1100,7 +1489,7 @@ export function EVChargingApp() {
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
               onClick={() => {
-                if (modalStep !== "confirmed") setModalStation(null);
+                if (modalStep !== "booking-success") setModalStation(null);
               }}
               style={{
                 position: "fixed",
@@ -1356,6 +1745,74 @@ export function EVChargingApp() {
                       gap: 16,
                     }}
                   >
+                    {/* Vehicle Type */}
+                    <div>
+                      <div
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 600,
+                          color: "#374151",
+                          fontFamily: "Sora, system-ui, sans-serif",
+                          marginBottom: 8,
+                        }}
+                      >
+                        Vehicle Type
+                      </div>
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "1fr 1fr 1fr",
+                          gap: 10,
+                        }}
+                      >
+                        {(
+                          [
+                            { key: "bike", label: "Bike", icon: "🛵" },
+                            { key: "car", label: "Car", icon: "🚗" },
+                            {
+                              key: "other",
+                              label: "Other Vehicle",
+                              icon: "🚌",
+                            },
+                          ] as const
+                        ).map(({ key, label, icon }) => (
+                          <button
+                            key={key}
+                            type="button"
+                            data-ocid={`vehicle.type_${key}_button`}
+                            onClick={() => setVehicleType(key)}
+                            style={{
+                              display: "flex",
+                              flexDirection: "column",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: 5,
+                              padding: "12px 6px",
+                              borderRadius: 12,
+                              border: `2px solid ${vehicleType === key ? "#1a73e8" : "#e5e7eb"}`,
+                              background:
+                                vehicleType === key ? "#e8f0fe" : "#fff",
+                              cursor: "pointer",
+                              transition: "all 0.15s",
+                              fontFamily: "Sora, system-ui, sans-serif",
+                            }}
+                          >
+                            <span style={{ fontSize: 26 }}>{icon}</span>
+                            <span
+                              style={{
+                                fontSize: 12,
+                                fontWeight: vehicleType === key ? 700 : 500,
+                                color:
+                                  vehicleType === key ? "#1a73e8" : "#374151",
+                              }}
+                            >
+                              {label}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
                     {/* EV Model */}
                     <div>
                       <label
@@ -1588,195 +2045,66 @@ export function EVChargingApp() {
                 </>
               )}
 
-              {/* Step 3: Confirmed */}
-              {modalStep === "confirmed" && (
-                <div style={{ textAlign: "center", padding: "8px 0 12px" }}>
-                  <div style={{ fontSize: 52, marginBottom: 12 }}>✅</div>
-                  <div
-                    style={{
-                      fontSize: 20,
-                      fontWeight: 800,
-                      color: "#1f2937",
-                      fontFamily: "Sora, system-ui, sans-serif",
-                      marginBottom: 6,
-                    }}
-                  >
-                    Vehicle Registered!
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 13,
-                      color: "#6b7280",
-                      fontFamily: "Sora, system-ui, sans-serif",
-                      marginBottom: 20,
-                    }}
-                  >
-                    Booking ID:{" "}
-                    <strong style={{ color: "#1a73e8" }}>
-                      {registrationId}
-                    </strong>
-                  </div>
+              {/* Step 3: Slot booking */}
+              {modalStep === "slot-booking" && (
+                <SlotBooking
+                  station={modalStation}
+                  chargingType={selectedChargingType}
+                  vehiclePlate={
+                    vehicleName.trim() || EV_PRESETS[vehiclePresetIdx].label
+                  }
+                  estimatedDurationMinutes={estimatedDurationMinutes}
+                  onBack={() => setModalStep("vehicle-registration")}
+                  onConfirmed={(confirmation) => {
+                    setBookingConfirmation(confirmation);
+                    setModalStep("booking-success");
+                    drawRoute(modalStation, selectedChargingType);
+                  }}
+                />
+              )}
 
-                  {/* Info cards */}
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr 1fr",
-                      gap: 10,
-                      marginBottom: 20,
-                    }}
-                  >
-                    <div
-                      style={{
-                        background: "#f0fdf4",
-                        border: "1px solid #bbf7d0",
-                        borderRadius: 12,
-                        padding: "12px 10px",
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: 10,
-                          color: "#6b7280",
-                          fontFamily: "Sora, system-ui, sans-serif",
-                          marginBottom: 4,
-                        }}
-                      >
-                        STATION
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 12,
-                          fontWeight: 700,
-                          color: "#1f2937",
-                          fontFamily: "Sora, system-ui, sans-serif",
-                        }}
-                      >
-                        {modalStation.name}
-                      </div>
-                    </div>
-                    <div
-                      style={{
-                        background: `${CHARGING_CONFIGS[selectedChargingType]?.color ?? "#888"}10`,
-                        border: `1px solid ${CHARGING_CONFIGS[selectedChargingType]?.color ?? "#888"}30`,
-                        borderRadius: 12,
-                        padding: "12px 10px",
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: 10,
-                          color: "#6b7280",
-                          fontFamily: "Sora, system-ui, sans-serif",
-                          marginBottom: 4,
-                        }}
-                      >
-                        CHARGING TYPE
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 12,
-                          fontWeight: 700,
-                          color: "#1f2937",
-                          fontFamily: "Sora, system-ui, sans-serif",
-                        }}
-                      >
-                        {CHARGING_CONFIGS[selectedChargingType]?.icon}{" "}
-                        {selectedChargingType}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Charge time highlight */}
-                  <div
-                    style={{
-                      background: "#1a73e8",
-                      borderRadius: 16,
-                      padding: "16px 20px",
-                      marginBottom: 20,
-                      color: "#fff",
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: 11,
-                        opacity: 0.8,
-                        fontFamily: "Sora, system-ui, sans-serif",
-                        marginBottom: 4,
-                      }}
-                    >
-                      ESTIMATED CHARGING TIME
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 26,
-                        fontWeight: 800,
-                        fontFamily: "Sora, system-ui, sans-serif",
-                      }}
-                    >
-                      {chargeTimeEstimate}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 11,
-                        opacity: 0.75,
-                        fontFamily: "Sora, system-ui, sans-serif",
-                        marginTop: 4,
-                      }}
-                    >
-                      to reach 100% charge
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    data-ocid="confirmed.close_button"
-                    onClick={() => setModalStation(null)}
-                    style={{
-                      background: "#f3f4f6",
-                      color: "#1f2937",
-                      border: "none",
-                      borderRadius: 14,
-                      padding: "13px",
-                      cursor: "pointer",
-                      fontSize: 14,
-                      fontWeight: 700,
-                      fontFamily: "Sora, system-ui, sans-serif",
-                      width: "100%",
-                    }}
-                  >
-                    View Route on Map
-                  </button>
-                </div>
+              {/* Step 4: Booking success */}
+              {modalStep === "booking-success" && bookingConfirmation && (
+                <BookingSuccess
+                  confirmation={bookingConfirmation}
+                  onViewMyBookings={() => {
+                    setModalStation(null);
+                    setMyBookingsOpen(true);
+                  }}
+                  onBackToMap={() => {
+                    setModalStation(null);
+                  }}
+                />
               )}
 
               {/* No GPS warning */}
-              {locationStatus !== "success" && modalStep !== "confirmed" && (
-                <div
-                  style={{
-                    marginTop: 16,
-                    padding: "10px 14px",
-                    background: "#eff6ff",
-                    borderRadius: 10,
-                    border: "1px solid #bfdbfe",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                  }}
-                >
-                  <RefreshCw size={14} color="#1d4ed8" />
-                  <span
+              {locationStatus !== "success" &&
+                modalStep !== "booking-success" && (
+                  <div
                     style={{
-                      fontSize: 12,
-                      color: "#1d4ed8",
-                      fontWeight: 500,
-                      fontFamily: "Sora, system-ui, sans-serif",
+                      marginTop: 16,
+                      padding: "10px 14px",
+                      background: "#eff6ff",
+                      borderRadius: 10,
+                      border: "1px solid #bfdbfe",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
                     }}
                   >
-                    Allow location access to get turn-by-turn directions.
-                  </span>
-                </div>
-              )}
+                    <RefreshCw size={14} color="#1d4ed8" />
+                    <span
+                      style={{
+                        fontSize: 12,
+                        color: "#1d4ed8",
+                        fontWeight: 500,
+                        fontFamily: "Sora, system-ui, sans-serif",
+                      }}
+                    >
+                      Allow location access to get turn-by-turn directions.
+                    </span>
+                  </div>
+                )}
             </motion.div>
           </>
         )}

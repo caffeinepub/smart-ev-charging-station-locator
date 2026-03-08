@@ -10,6 +10,20 @@ import type { ActorMethod } from '@icp-sdk/core/agent';
 import type { IDL } from '@icp-sdk/core/candid';
 import type { Principal } from '@icp-sdk/core/principal';
 
+export interface Booking {
+  'status' : BookingStatus,
+  'bookingId' : bigint,
+  'estimatedDurationMinutes' : bigint,
+  'chargingType' : string,
+  'vehiclePlate' : string,
+  'scheduledTime' : bigint,
+  'userId' : Principal,
+  'stationId' : bigint,
+}
+export type BookingStatus = { 'cancelled' : null } |
+  { 'pending' : null } |
+  { 'completed' : null } |
+  { 'confirmed' : null };
 export interface Station {
   'id' : bigint,
   'latitude' : number,
@@ -25,8 +39,16 @@ export type UserRole = { 'admin' : null } |
 export interface _SERVICE {
   '_initializeAccessControlWithSecret' : ActorMethod<[string], undefined>,
   'assignCallerUserRole' : ActorMethod<[Principal, UserRole], undefined>,
+  'bookSlot' : ActorMethod<[bigint, string, string, bigint, bigint], bigint>,
+  'cancelBooking' : ActorMethod<[bigint], boolean>,
+  'getAvailableSlots' : ActorMethod<
+    [bigint, bigint, bigint],
+    Array<{ 'isAvailable' : boolean, 'slotTime' : bigint }>
+  >,
   'getCallerUserProfile' : ActorMethod<[], [] | [UserProfile]>,
   'getCallerUserRole' : ActorMethod<[], UserRole>,
+  'getMyBookings' : ActorMethod<[], Array<Booking>>,
+  'getStationBookings' : ActorMethod<[bigint], Array<Booking>>,
   'getStations' : ActorMethod<[], Array<Station>>,
   'getUserProfile' : ActorMethod<[Principal], [] | [UserProfile]>,
   'initialize' : ActorMethod<[], undefined>,

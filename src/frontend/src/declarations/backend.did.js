@@ -14,6 +14,22 @@ export const UserRole = IDL.Variant({
   'guest' : IDL.Null,
 });
 export const UserProfile = IDL.Record({ 'name' : IDL.Text });
+export const BookingStatus = IDL.Variant({
+  'cancelled' : IDL.Null,
+  'pending' : IDL.Null,
+  'completed' : IDL.Null,
+  'confirmed' : IDL.Null,
+});
+export const Booking = IDL.Record({
+  'status' : BookingStatus,
+  'bookingId' : IDL.Nat,
+  'estimatedDurationMinutes' : IDL.Nat,
+  'chargingType' : IDL.Text,
+  'vehiclePlate' : IDL.Text,
+  'scheduledTime' : IDL.Int,
+  'userId' : IDL.Principal,
+  'stationId' : IDL.Nat,
+});
 export const Station = IDL.Record({
   'id' : IDL.Nat,
   'latitude' : IDL.Float64,
@@ -26,8 +42,21 @@ export const Station = IDL.Record({
 export const idlService = IDL.Service({
   '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
   'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
+  'bookSlot' : IDL.Func(
+      [IDL.Nat, IDL.Text, IDL.Text, IDL.Int, IDL.Nat],
+      [IDL.Nat],
+      [],
+    ),
+  'cancelBooking' : IDL.Func([IDL.Nat], [IDL.Bool], []),
+  'getAvailableSlots' : IDL.Func(
+      [IDL.Nat, IDL.Int, IDL.Int],
+      [IDL.Vec(IDL.Record({ 'isAvailable' : IDL.Bool, 'slotTime' : IDL.Int }))],
+      ['query'],
+    ),
   'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
   'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
+  'getMyBookings' : IDL.Func([], [IDL.Vec(Booking)], ['query']),
+  'getStationBookings' : IDL.Func([IDL.Nat], [IDL.Vec(Booking)], ['query']),
   'getStations' : IDL.Func([], [IDL.Vec(Station)], ['query']),
   'getUserProfile' : IDL.Func(
       [IDL.Principal],
@@ -49,6 +78,22 @@ export const idlFactory = ({ IDL }) => {
     'guest' : IDL.Null,
   });
   const UserProfile = IDL.Record({ 'name' : IDL.Text });
+  const BookingStatus = IDL.Variant({
+    'cancelled' : IDL.Null,
+    'pending' : IDL.Null,
+    'completed' : IDL.Null,
+    'confirmed' : IDL.Null,
+  });
+  const Booking = IDL.Record({
+    'status' : BookingStatus,
+    'bookingId' : IDL.Nat,
+    'estimatedDurationMinutes' : IDL.Nat,
+    'chargingType' : IDL.Text,
+    'vehiclePlate' : IDL.Text,
+    'scheduledTime' : IDL.Int,
+    'userId' : IDL.Principal,
+    'stationId' : IDL.Nat,
+  });
   const Station = IDL.Record({
     'id' : IDL.Nat,
     'latitude' : IDL.Float64,
@@ -61,8 +106,25 @@ export const idlFactory = ({ IDL }) => {
   return IDL.Service({
     '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
     'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
+    'bookSlot' : IDL.Func(
+        [IDL.Nat, IDL.Text, IDL.Text, IDL.Int, IDL.Nat],
+        [IDL.Nat],
+        [],
+      ),
+    'cancelBooking' : IDL.Func([IDL.Nat], [IDL.Bool], []),
+    'getAvailableSlots' : IDL.Func(
+        [IDL.Nat, IDL.Int, IDL.Int],
+        [
+          IDL.Vec(
+            IDL.Record({ 'isAvailable' : IDL.Bool, 'slotTime' : IDL.Int })
+          ),
+        ],
+        ['query'],
+      ),
     'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
     'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
+    'getMyBookings' : IDL.Func([], [IDL.Vec(Booking)], ['query']),
+    'getStationBookings' : IDL.Func([IDL.Nat], [IDL.Vec(Booking)], ['query']),
     'getStations' : IDL.Func([], [IDL.Vec(Station)], ['query']),
     'getUserProfile' : IDL.Func(
         [IDL.Principal],
