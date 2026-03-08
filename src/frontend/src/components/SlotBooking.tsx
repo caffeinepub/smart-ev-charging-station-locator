@@ -110,7 +110,20 @@ export function SlotBooking({
   const [selectedSlotTime, setSelectedSlotTime] = useState<bigint | null>(null);
   const [isBooking, setIsBooking] = useState(false);
 
-  const stationIdBig = useMemo(() => BigInt(station.id), [station.id]);
+  const stationIdBig = useMemo(() => {
+    // station.id may be a string like "osm-123456" or "known-ather-bailhongal"
+    // Try parsing it directly; if it fails, derive a stable numeric ID from the string
+    const numeric = Number(station.id.replace(/\D/g, "").slice(0, 15));
+    return BigInt(
+      Number.isFinite(numeric) && numeric > 0
+        ? numeric
+        : Math.abs(
+            station.id
+              .split("")
+              .reduce((acc, c) => (acc * 31 + c.charCodeAt(0)) | 0, 0),
+          ) || 1,
+    );
+  }, [station.id]);
   const { start: dayStart, end: dayEnd } = useMemo(
     () => getDayRange(selectedDay),
     [selectedDay],
