@@ -116,22 +116,22 @@ export function MyBookings({ open, onClose, stationNameMap }: MyBookingsProps) {
             }}
           />
 
-          {/* Panel */}
+          {/* Panel — slides from LEFT like Google Maps */}
           <motion.div
             data-ocid="my_bookings.panel"
-            initial={{ x: "100%" }}
+            initial={{ x: "-100%" }}
             animate={{ x: 0 }}
-            exit={{ x: "100%" }}
+            exit={{ x: "-100%" }}
             transition={{ type: "spring", damping: 30, stiffness: 280 }}
             style={{
               position: "fixed",
               top: 0,
-              right: 0,
+              left: 0,
               bottom: 0,
               width: "min(420px, 100vw)",
               background: "#fff",
               zIndex: 900,
-              boxShadow: "-8px 0 40px rgba(0,0,0,0.18)",
+              boxShadow: "8px 0 40px rgba(32,33,36,0.18)",
               display: "flex",
               flexDirection: "column",
               fontFamily: FONT,

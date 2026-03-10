@@ -137,8 +137,8 @@ export function SlotBooking({
 
   const bookSlot = useBookSlot();
 
-  // Determine if a slot is in the past
-  const nowNs = useMemo(() => BigInt(Date.now()) * 1_000_000n, []);
+  // Determine if a slot is in the past — recompute on each render (no memo needed)
+  const nowNs = BigInt(Date.now()) * 1_000_000n;
 
   const handleConfirm = useCallback(async () => {
     if (!selectedSlotTime) {
@@ -457,6 +457,21 @@ export function SlotBooking({
             }}
           >
             No slots available for this day
+          </div>
+        ) : slots.every((s) => s.slotTime < nowNs || !s.isAvailable) ? (
+          <div
+            data-ocid="slot.empty_state"
+            style={{
+              textAlign: "center",
+              padding: "24px 0",
+              color: "#9ca3af",
+              fontSize: 13,
+              lineHeight: 1.6,
+            }}
+          >
+            {slots.every((s) => s.slotTime < nowNs)
+              ? "All slots for today have passed. Please select tomorrow or a future date."
+              : "All slots for this day are fully booked."}
           </div>
         ) : (
           <div

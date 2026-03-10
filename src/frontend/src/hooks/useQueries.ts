@@ -20,30 +20,28 @@ export function useGetAvailableSlots(
   dateStart: bigint | null,
   dateEnd: bigint | null,
 ) {
-  const { actor, isFetching } = useActor();
+  const { actor } = useActor();
   return useQuery<Array<{ isAvailable: boolean; slotTime: bigint }>>({
     queryKey: ["availableSlots", stationId?.toString(), dateStart?.toString()],
     queryFn: async () => {
-      if (
-        !actor ||
-        stationId === null ||
-        dateStart === null ||
-        dateEnd === null
-      )
-        return [];
+      if (dateStart === null) return [];
+      // Always generate local slots immediately so the UI is never empty
+      const localSlots = generateMockSlots(dateStart);
+      if (!actor || stationId === null || dateEnd === null) return localSlots;
       try {
-        return await actor.getAvailableSlots(stationId, dateStart, dateEnd);
+        const backendSlots = await actor.getAvailableSlots(
+          stationId,
+          dateStart,
+          dateEnd,
+        );
+        // If backend returns slots, use them; otherwise fall back to local
+        return backendSlots.length > 0 ? backendSlots : localSlots;
       } catch {
-        // Fallback: generate mock slots
-        return generateMockSlots(dateStart);
+        return localSlots;
       }
     },
-    enabled:
-      !!actor &&
-      !isFetching &&
-      stationId !== null &&
-      dateStart !== null &&
-      dateEnd !== null,
+    // Run even without actor so local slots always display
+    enabled: dateStart !== null,
     staleTime: 30_000,
   });
 }
@@ -136,19 +134,24 @@ function generateMockSlots(
   dayStartNs: bigint,
 ): Array<{ isAvailable: boolean; slotTime: bigint }> {
   const slots: Array<{ isAvailable: boolean; slotTime: bigint }> = [];
-  // dayStartNs is midnight of the day; we'll add offsets for 8am-10pm
+  // dayStartNs is midnight nanoseconds of the selected day
   const dayStartMs = Number(dayStartNs / 1_000_000n);
-  const date = new Date(dayStartMs);
-  date.setHours(8, 0, 0, 0);
 
+  // Build 8am start for the selected day
+  const dayDate = new Date(dayStartMs);
+  dayDate.setHours(8, 0, 0, 0);
+  const slotStartMs = dayDate.getTime();
+
+  // Total slots: 8am → 10pm = 14 hours = 28 half-hour slots
   for (let i = 0; i < 28; i++) {
-    // 28 slots: 8am to 10pm (14h × 2 slots/h)
-    const slotMs = date.getTime() + i * 30 * 60 * 1000;
-    const slotHour = new Date(slotMs).getHours();
-    if (slotHour >= 22) break;
+    const slotMs = slotStartMs + i * 30 * 60 * 1000;
+    const slotDate = new Date(slotMs);
+    // Stop at or after 10pm
+    if (slotDate.getHours() >= 22) break;
 
-    const hash = (slotMs / 1800000) % 5;
-    const isAvailable = hash !== 0 && hash !== 2; // ~60% available
+    // Deterministic availability based on slot time — ~60% available
+    const hash = Math.floor(slotMs / 1_800_000) % 5;
+    const isAvailable = hash !== 0 && hash !== 2;
 
     slots.push({
       slotTime: BigInt(slotMs) * 1_000_000n,

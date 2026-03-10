@@ -72,7 +72,7 @@ declare namespace L {
     ): Marker;
     bindTooltip(tooltip: string, options?: TooltipOptions): Marker;
     openPopup(): Marker;
-    on(event: string, handler: () => void): Marker;
+    on(event: string, handler: (e?: unknown) => void): Marker;
     getLatLng(): LatLng;
   }
 
@@ -101,6 +101,7 @@ declare namespace L {
   interface TileLayer {
     addTo(map: Map): TileLayer;
     remove(): void;
+    setUrl(url: string): TileLayer;
   }
 
   interface MapOptions {
@@ -141,9 +142,11 @@ declare namespace L {
       options?: ZoomOptions,
     ): Map;
     getZoom(): number;
+    zoomIn(delta?: number): Map;
+    zoomOut(delta?: number): Map;
     invalidateSize(options?: { animate: boolean }): Map;
     fitBounds(bounds: LatLngBounds, options?: FitBoundsOptions): Map;
-    on(event: string, handler: () => void): Map;
+    on(event: string, handler: (e?: unknown) => void): Map;
   }
 
   interface ZoomControl {
