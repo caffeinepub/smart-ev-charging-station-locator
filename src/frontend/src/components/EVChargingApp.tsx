@@ -5,6 +5,7 @@ import {
   Layers,
   Loader2,
   LogIn,
+  LogOut,
   Navigation,
   RefreshCw,
   Search,
@@ -340,6 +341,60 @@ const KNOWN_SEED_STATIONS: UIStation[] = [
     chargingTypes: ["Slow Charging", "Battery Swapping"],
     isAvailable: true,
     brand: "bpcl",
+  },
+  {
+    id: "known-tatapower-bailhongal-north",
+    name: "Tata Power EV Hub – Bailhongal North",
+    lat: 16.025,
+    lng: 74.857,
+    chargingTypes: ["Fast Charging", "Slow Charging"],
+    isAvailable: true,
+    brand: "tatapower",
+  },
+  {
+    id: "known-statiq-bailhongal-east",
+    name: "Statiq Charging Point – Bailhongal East",
+    lat: 15.976,
+    lng: 74.933,
+    chargingTypes: ["Fast Charging"],
+    isAvailable: true,
+    brand: "statiq",
+  },
+  {
+    id: "known-hpcl-bailhongal-south",
+    name: "HP EV Charger – Bailhongal South",
+    lat: 15.892,
+    lng: 74.862,
+    chargingTypes: ["Slow Charging"],
+    isAvailable: true,
+    brand: "hpcl",
+  },
+  {
+    id: "known-reliance-bailhongal-west",
+    name: "Reliance EV Station – Bailhongal West",
+    lat: 15.979,
+    lng: 74.793,
+    chargingTypes: ["Fast Charging", "Battery Swapping"],
+    isAvailable: true,
+    brand: "reliance",
+  },
+  {
+    id: "known-iocl-bailhongal-ne",
+    name: "IndianOil EV Point – Ugarkhod Road",
+    lat: 16.052,
+    lng: 74.951,
+    chargingTypes: ["Slow Charging", "Fast Charging"],
+    isAvailable: true,
+    brand: "iocl",
+  },
+  {
+    id: "known-chargeplus-bailhongal-sw",
+    name: "Charge+Zone – Saundatti Road",
+    lat: 15.848,
+    lng: 74.745,
+    chargingTypes: ["Fast Charging", "Battery Swapping"],
+    isAvailable: true,
+    brand: "chargeplus",
   },
 ];
 
@@ -1261,10 +1316,20 @@ export function EVChargingApp() {
   const [myBookingsOpen, setMyBookingsOpen] = useState(false);
   const [activeBrand, setActiveBrand] = useState<string | null>(null);
   const [loginBannerDismissed, setLoginBannerDismissed] = useState(false);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [profileMenuReady, setProfileMenuReady] = useState(false);
 
   useEffect(() => {
     if (isLoggedIn) setLoginBannerDismissed(true);
   }, [isLoggedIn]);
+
+  useEffect(() => {
+    if (showProfileMenu) {
+      const t = setTimeout(() => setProfileMenuReady(true), 300);
+      return () => clearTimeout(t);
+    }
+    setProfileMenuReady(false);
+  }, [showProfileMenu]);
 
   const stationNameMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -1780,11 +1845,14 @@ export function EVChargingApp() {
               <button
                 type="button"
                 data-ocid="login.button"
-                onClick={isLoggedIn ? clear : login}
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (isLoggedIn) setShowProfileMenu((v) => !v);
+                  else login();
+                }}
                 disabled={isLoggingIn || isInitializing}
-                title={
-                  isLoggedIn ? "Logged in — tap to logout" : "Sign in to book"
-                }
+                title={isLoggedIn ? "Your profile" : "Sign in to book"}
                 style={{
                   background: "none",
                   border: "none",
@@ -1825,6 +1893,113 @@ export function EVChargingApp() {
                   )}
                 </div>
               </button>
+              {/* Profile Dropdown Menu */}
+              {showProfileMenu && isLoggedIn && (
+                <>
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) =>
+                      e.key === "Escape" && setShowProfileMenu(false)
+                    }
+                    style={{
+                      position: "fixed",
+                      inset: 0,
+                      zIndex: 998,
+                      pointerEvents: profileMenuReady ? "auto" : "none",
+                    }}
+                    onClick={() => setShowProfileMenu(false)}
+                  />
+                  <div
+                    data-ocid="profile.dropdown_menu"
+                    style={{
+                      position: "fixed",
+                      top: "calc(max(env(safe-area-inset-top, 44px), 44px) + 54px)",
+                      right: 12,
+                      zIndex: 999,
+                      background: "rgba(255,255,255,0.97)",
+                      backdropFilter: "blur(20px)",
+                      WebkitBackdropFilter: "blur(20px)",
+                      borderRadius: 14,
+                      boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
+                      minWidth: 200,
+                      overflow: "hidden",
+                      border: "1px solid rgba(0,0,0,0.08)",
+                    }}
+                  >
+                    <button
+                      data-ocid="profile.view_profile.button"
+                      type="button"
+                      onClick={() => {
+                        setShowProfileMenu(false);
+                      }}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 12,
+                        width: "100%",
+                        padding: "14px 16px",
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        fontSize: 15,
+                        color: "#1c1c1e",
+                        borderBottom: "1px solid rgba(0,0,0,0.06)",
+                      }}
+                    >
+                      <User size={18} color="#007AFF" />
+                      <span>View Profile</span>
+                    </button>
+                    <button
+                      data-ocid="profile.my_bookings.button"
+                      type="button"
+                      onClick={() => {
+                        setShowProfileMenu(false);
+                        setMyBookingsOpen(true);
+                      }}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 12,
+                        width: "100%",
+                        padding: "14px 16px",
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        fontSize: 15,
+                        color: "#1c1c1e",
+                        borderBottom: "1px solid rgba(0,0,0,0.06)",
+                      }}
+                    >
+                      <Calendar size={18} color="#007AFF" />
+                      <span>View My Bookings</span>
+                    </button>
+                    <button
+                      data-ocid="profile.logout.button"
+                      type="button"
+                      onClick={() => {
+                        setShowProfileMenu(false);
+                        clear();
+                      }}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 12,
+                        width: "100%",
+                        padding: "14px 16px",
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        fontSize: 15,
+                        color: "#FF3B30",
+                      }}
+                    >
+                      <LogOut size={18} color="#FF3B30" />
+                      <span>Logout</span>
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </motion.div>
         )}

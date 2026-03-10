@@ -66,11 +66,12 @@ function formatDayLabel(date: Date, today: Date): string {
   });
 }
 
+/** Returns 8am and 10pm nanosecond timestamps for the given day */
 function getDayRange(date: Date): { start: bigint; end: bigint } {
   const start = new Date(date);
-  start.setHours(0, 0, 0, 0);
+  start.setHours(8, 0, 0, 0);
   const end = new Date(date);
-  end.setHours(23, 59, 59, 999);
+  end.setHours(22, 0, 0, 0); // 10pm — backend stops before this
   return {
     start: BigInt(start.getTime()) * 1_000_000n,
     end: BigInt(end.getTime()) * 1_000_000n,
@@ -111,8 +112,6 @@ export function SlotBooking({
   const [isBooking, setIsBooking] = useState(false);
 
   const stationIdBig = useMemo(() => {
-    // station.id may be a string like "osm-123456" or "known-ather-bailhongal"
-    // Try parsing it directly; if it fails, derive a stable numeric ID from the string
     const numeric = Number(station.id.replace(/\D/g, "").slice(0, 15));
     return BigInt(
       Number.isFinite(numeric) && numeric > 0
@@ -124,6 +123,7 @@ export function SlotBooking({
           ) || 1,
     );
   }, [station.id]);
+
   const { start: dayStart, end: dayEnd } = useMemo(
     () => getDayRange(selectedDay),
     [selectedDay],
@@ -137,7 +137,7 @@ export function SlotBooking({
 
   const bookSlot = useBookSlot();
 
-  // Determine if a slot is in the past — recompute on each render (no memo needed)
+  // Current time in nanoseconds
   const nowNs = BigInt(Date.now()) * 1_000_000n;
 
   const handleConfirm = useCallback(async () => {
@@ -170,19 +170,18 @@ export function SlotBooking({
         estimatedDurationMinutes,
       });
       toast.success("Slot booked successfully!");
-    } catch {
-      // Fallback: create a mock booking ID
-      const mockId = BigInt(Math.floor(Math.random() * 9000) + 1000);
-      const scheduledDate = new Date(Number(selectedSlotTime / 1_000_000n));
-      onConfirmed({
-        bookingId: mockId,
-        stationName: station.name,
-        scheduledTime: scheduledDate,
-        chargingType,
-        vehiclePlate,
-        estimatedDurationMinutes,
-      });
-      toast.success("Slot booked successfully!");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to book slot";
+      if (
+        msg.toLowerCase().includes("already booked") ||
+        msg.toLowerCase().includes("slot already")
+      ) {
+        toast.error(
+          "This slot was just booked by someone else. Please choose another.",
+        );
+      } else {
+        toast.error(`Booking failed: ${msg}`);
+      }
     } finally {
       setIsBooking(false);
     }
@@ -446,33 +445,6 @@ export function SlotBooking({
             />
             Loading slots…
           </div>
-        ) : slots.length === 0 ? (
-          <div
-            data-ocid="slot.empty_state"
-            style={{
-              textAlign: "center",
-              padding: "24px 0",
-              color: "#9ca3af",
-              fontSize: 13,
-            }}
-          >
-            No slots available for this day
-          </div>
-        ) : slots.every((s) => s.slotTime < nowNs || !s.isAvailable) ? (
-          <div
-            data-ocid="slot.empty_state"
-            style={{
-              textAlign: "center",
-              padding: "24px 0",
-              color: "#9ca3af",
-              fontSize: 13,
-              lineHeight: 1.6,
-            }}
-          >
-            {slots.every((s) => s.slotTime < nowNs)
-              ? "All slots for today have passed. Please select tomorrow or a future date."
-              : "All slots for this day are fully booked."}
-          </div>
         ) : (
           <div
             style={{
@@ -484,8 +456,30 @@ export function SlotBooking({
             {slots.map((slot) => {
               const slotDate = new Date(Number(slot.slotTime / 1_000_000n));
               const isPast = slot.slotTime < nowNs;
+              const isBooked = !slot.isAvailable && !isPast;
               const isUnavailable = !slot.isAvailable || isPast;
               const isSelected = selectedSlotTime === slot.slotTime;
+
+              let borderColor = "#bbf7d0";
+              let bgColor = "#f0fdf4";
+              let textColor = "#16a34a";
+              let cursor = "pointer";
+
+              if (isSelected) {
+                borderColor = "#1a73e8";
+                bgColor = "#1a73e8";
+                textColor = "#fff";
+              } else if (isBooked) {
+                borderColor = "#fecaca";
+                bgColor = "#fff1f1";
+                textColor = "#dc2626";
+                cursor = "not-allowed";
+              } else if (isPast) {
+                borderColor = "#e5e7eb";
+                bgColor = "#f9fafb";
+                textColor = "#d1d5db";
+                cursor = "not-allowed";
+              }
 
               return (
                 <button
@@ -497,42 +491,42 @@ export function SlotBooking({
                     setSelectedSlotTime(isSelected ? null : slot.slotTime)
                   }
                   style={{
-                    padding: "10px 8px",
+                    padding: "10px 6px",
                     borderRadius: 10,
-                    border: `2px solid ${
-                      isSelected
-                        ? "#1a73e8"
-                        : isUnavailable
-                          ? "#e5e7eb"
-                          : "#bbf7d0"
-                    }`,
-                    background: isSelected
-                      ? "#1a73e8"
-                      : isUnavailable
-                        ? "#f9fafb"
-                        : "#f0fdf4",
-                    color: isSelected
-                      ? "#fff"
-                      : isUnavailable
-                        ? "#d1d5db"
-                        : "#16a34a",
-                    cursor: isUnavailable ? "not-allowed" : "pointer",
-                    fontSize: 12,
+                    border: `2px solid ${borderColor}`,
+                    background: bgColor,
+                    color: textColor,
+                    cursor,
+                    fontSize: 11,
                     fontWeight: 700,
                     fontFamily: FONT,
                     transition: "all 0.12s",
                     textAlign: "center",
                     position: "relative",
+                    lineHeight: 1.3,
                   }}
                   title={
-                    isUnavailable
-                      ? isPast
-                        ? "Past slot"
-                        : "Slot taken"
-                      : "Available"
+                    isPast
+                      ? "Past slot"
+                      : isBooked
+                        ? "Slot already booked"
+                        : "Available — tap to select"
                   }
                 >
                   {formatTime(slotDate)}
+                  {isBooked && (
+                    <div
+                      style={{
+                        fontSize: 9,
+                        fontWeight: 700,
+                        color: "#dc2626",
+                        marginTop: 2,
+                        letterSpacing: "0.03em",
+                      }}
+                    >
+                      BOOKED
+                    </div>
+                  )}
                   {!isUnavailable && !isSelected && (
                     <div
                       style={{

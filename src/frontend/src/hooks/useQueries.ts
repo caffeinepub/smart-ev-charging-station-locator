@@ -25,8 +25,8 @@ export function useGetAvailableSlots(
     queryKey: ["availableSlots", stationId?.toString(), dateStart?.toString()],
     queryFn: async () => {
       if (dateStart === null) return [];
-      // Always generate local slots immediately so the UI is never empty
-      const localSlots = generateMockSlots(dateStart);
+      // Always show local slots immediately so UI is never empty
+      const localSlots = generateAllSlots(dateStart);
       if (!actor || stationId === null || dateEnd === null) return localSlots;
       try {
         const backendSlots = await actor.getAvailableSlots(
@@ -34,15 +34,18 @@ export function useGetAvailableSlots(
           dateStart,
           dateEnd,
         );
-        // If backend returns slots, use them; otherwise fall back to local
-        return backendSlots.length > 0 ? backendSlots : localSlots;
+        // Backend returns real booking status — prefer it if we got results
+        return backendSlots.length > 0
+          ? (backendSlots as Array<{ isAvailable: boolean; slotTime: bigint }>)
+          : localSlots;
       } catch {
         return localSlots;
       }
     },
-    // Run even without actor so local slots always display
     enabled: dateStart !== null,
-    staleTime: 30_000,
+    // Short stale time so booking by User 1 shows up quickly for User 2
+    staleTime: 5_000,
+    refetchInterval: 15_000,
   });
 }
 
@@ -125,37 +128,30 @@ export function useCancelBooking() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["myBookings"] });
+      void queryClient.invalidateQueries({ queryKey: ["availableSlots"] });
     },
   });
 }
 
-/** Generate realistic mock slots 8am-10pm in 30-min blocks */
-function generateMockSlots(
-  dayStartNs: bigint,
+/**
+ * Generate all slots from 8am to 10pm (28 half-hour slots).
+ * All slots are marked available by default — real availability
+ * comes from the backend once connected.
+ */
+export function generateAllSlots(
+  dayStart8amNs: bigint,
 ): Array<{ isAvailable: boolean; slotTime: bigint }> {
   const slots: Array<{ isAvailable: boolean; slotTime: bigint }> = [];
-  // dayStartNs is midnight nanoseconds of the selected day
-  const dayStartMs = Number(dayStartNs / 1_000_000n);
+  const startMs = Number(dayStart8amNs / 1_000_000n);
 
-  // Build 8am start for the selected day
-  const dayDate = new Date(dayStartMs);
-  dayDate.setHours(8, 0, 0, 0);
-  const slotStartMs = dayDate.getTime();
-
-  // Total slots: 8am → 10pm = 14 hours = 28 half-hour slots
+  // 8am → 10pm = 28 half-hour slots
   for (let i = 0; i < 28; i++) {
-    const slotMs = slotStartMs + i * 30 * 60 * 1000;
+    const slotMs = startMs + i * 30 * 60 * 1000;
     const slotDate = new Date(slotMs);
-    // Stop at or after 10pm
     if (slotDate.getHours() >= 22) break;
-
-    // Deterministic availability based on slot time — ~60% available
-    const hash = Math.floor(slotMs / 1_800_000) % 5;
-    const isAvailable = hash !== 0 && hash !== 2;
-
     slots.push({
       slotTime: BigInt(slotMs) * 1_000_000n,
-      isAvailable,
+      isAvailable: true, // all available until backend says otherwise
     });
   }
   return slots;
