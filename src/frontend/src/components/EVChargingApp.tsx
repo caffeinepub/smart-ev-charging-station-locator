@@ -23,7 +23,6 @@ import { toast } from "sonner";
 import { useInternetIdentity } from "../hooks/useInternetIdentity";
 import { BookingSuccess } from "./BookingSuccess";
 import { MyBookings } from "./MyBookings";
-import ProfileView from "./ProfileView";
 import { type BookingConfirmation, SlotBooking } from "./SlotBooking";
 
 // ─── iOS Design Tokens ────────────────────────────────────────────────────────
@@ -1318,20 +1317,10 @@ export function EVChargingApp() {
   const [activeBrand, setActiveBrand] = useState<string | null>(null);
   const [loginBannerDismissed, setLoginBannerDismissed] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
-  const [profileMenuReady, setProfileMenuReady] = useState(false);
-  const [showProfileView, setShowProfileView] = useState(false);
 
   useEffect(() => {
     if (isLoggedIn) setLoginBannerDismissed(true);
   }, [isLoggedIn]);
-
-  useEffect(() => {
-    if (showProfileMenu) {
-      const t = setTimeout(() => setProfileMenuReady(true), 300);
-      return () => clearTimeout(t);
-    }
-    setProfileMenuReady(false);
-  }, [showProfileMenu]);
 
   const stationNameMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -1847,14 +1836,13 @@ export function EVChargingApp() {
               <button
                 type="button"
                 data-ocid="login.button"
-                onPointerDown={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  if (isLoggedIn) setShowProfileMenu((v) => !v);
-                  else login();
-                }}
+                onClick={
+                  isLoggedIn ? () => setShowProfileMenu((v) => !v) : login
+                }
                 disabled={isLoggingIn || isInitializing}
-                title={isLoggedIn ? "Your profile" : "Sign in to book"}
+                title={
+                  isLoggedIn ? "Logged in — tap to logout" : "Sign in to book"
+                }
                 style={{
                   background: "none",
                   border: "none",
@@ -1904,12 +1892,7 @@ export function EVChargingApp() {
                     onKeyDown={(e) =>
                       e.key === "Escape" && setShowProfileMenu(false)
                     }
-                    style={{
-                      position: "fixed",
-                      inset: 0,
-                      zIndex: 998,
-                      pointerEvents: profileMenuReady ? "auto" : "none",
-                    }}
+                    style={{ position: "fixed", inset: 0, zIndex: 998 }}
                     onClick={() => setShowProfileMenu(false)}
                   />
                   <div
@@ -1934,7 +1917,6 @@ export function EVChargingApp() {
                       type="button"
                       onClick={() => {
                         setShowProfileMenu(false);
-                        setShowProfileView(true);
                       }}
                       style={{
                         display: "flex",
@@ -3592,12 +3574,6 @@ export function EVChargingApp() {
           </motion.div>
         )}
       </AnimatePresence>
-      {showProfileView && (
-        <ProfileView
-          onClose={() => setShowProfileView(false)}
-          principalId={identity?.getPrincipal().toText()}
-        />
-      )}
     </div>
   );
 }
