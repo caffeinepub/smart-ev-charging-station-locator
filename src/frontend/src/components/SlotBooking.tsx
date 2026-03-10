@@ -71,7 +71,7 @@ function getDayRange(date: Date): { start: bigint; end: bigint } {
   const start = new Date(date);
   start.setHours(8, 0, 0, 0);
   const end = new Date(date);
-  end.setHours(22, 0, 0, 0); // 10pm — backend stops before this
+  end.setHours(22, 0, 0, 0);
   return {
     start: BigInt(start.getTime()) * 1_000_000n,
     end: BigInt(end.getTime()) * 1_000_000n,
@@ -149,7 +149,6 @@ export function SlotBooking({
       toast.error("Please log in to book a slot");
       return;
     }
-
     setIsBooking(true);
     try {
       const bookingId = await bookSlot.mutateAsync({
@@ -203,6 +202,10 @@ export function SlotBooking({
       : chargingType === "Slow Charging"
         ? "#22c55e"
         : "#3b82f6";
+
+  // Determine confirm button state
+
+  const confirmDisabled = !selectedSlotTime || isBooking || !isLoggedIn;
 
   return (
     <div style={{ fontFamily: FONT }}>
@@ -427,7 +430,6 @@ export function SlotBooking({
 
         {slotsLoading ? (
           <div
-            data-ocid="slot.loading_state"
             style={{
               textAlign: "center",
               padding: "24px 0",
@@ -595,23 +597,16 @@ export function SlotBooking({
       <button
         type="button"
         data-ocid="slot.confirm_button"
-        disabled={!selectedSlotTime || isBooking || !isLoggedIn}
+        disabled={confirmDisabled}
         onClick={handleConfirm}
         style={{
           width: "100%",
           padding: "14px",
           borderRadius: 14,
           border: "none",
-          background:
-            !selectedSlotTime || isBooking || !isLoggedIn
-              ? "#e5e7eb"
-              : "#1a73e8",
-          color:
-            !selectedSlotTime || isBooking || !isLoggedIn ? "#9ca3af" : "#fff",
-          cursor:
-            !selectedSlotTime || isBooking || !isLoggedIn
-              ? "not-allowed"
-              : "pointer",
+          background: confirmDisabled ? "#e5e7eb" : "#1a73e8",
+          color: confirmDisabled ? "#9ca3af" : "#fff",
+          cursor: confirmDisabled ? "not-allowed" : "pointer",
           fontSize: 15,
           fontWeight: 700,
           fontFamily: FONT,

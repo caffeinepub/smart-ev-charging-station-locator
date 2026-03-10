@@ -1,6 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Booking } from "../backend";
+import { createActorWithConfig } from "../config";
+import { getSecretParameter } from "../utils/urlParams";
 import { useActor } from "./useActor";
+import { useInternetIdentity } from "./useInternetIdentity";
 
 export function useGetStations() {
   const { actor, isFetching } = useActor();
@@ -25,7 +28,6 @@ export function useGetAvailableSlots(
     queryKey: ["availableSlots", stationId?.toString(), dateStart?.toString()],
     queryFn: async () => {
       if (dateStart === null) return [];
-      // Always show local slots immediately so UI is never empty
       const localSlots = generateAllSlots(dateStart);
       if (!actor || stationId === null || dateEnd === null) return localSlots;
       try {
@@ -34,7 +36,6 @@ export function useGetAvailableSlots(
           dateStart,
           dateEnd,
         );
-        // Backend returns real booking status — prefer it if we got results
         return backendSlots.length > 0
           ? (backendSlots as Array<{ isAvailable: boolean; slotTime: bigint }>)
           : localSlots;
@@ -43,7 +44,6 @@ export function useGetAvailableSlots(
       }
     },
     enabled: dateStart !== null,
-    // Short stale time so booking by User 1 shows up quickly for User 2
     staleTime: 5_000,
     refetchInterval: 15_000,
   });
@@ -83,8 +83,22 @@ export function useGetCallerRole() {
   });
 }
 
+/**
+ * Creates a fresh authenticated actor from the current identity.
+ * Used as fallback when the cached actor hasn't initialized yet.
+ */
+async function createFreshActor(
+  identity: import("@icp-sdk/core/agent").Identity,
+) {
+  const actor = await createActorWithConfig({ agentOptions: { identity } });
+  const adminToken = getSecretParameter("caffeineAdminToken") ?? "";
+  await actor._initializeAccessControlWithSecret(adminToken);
+  return actor;
+}
+
 export function useBookSlot() {
   const { actor } = useActor();
+  const { identity } = useInternetIdentity();
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -101,8 +115,11 @@ export function useBookSlot() {
       scheduledTime: bigint;
       estimatedDurationMinutes: bigint;
     }) => {
-      if (!actor) throw new Error("Not connected");
-      return actor.bookSlot(
+      // Use cached actor if ready; otherwise build a fresh one from identity
+      const activeActor =
+        actor ?? (identity ? await createFreshActor(identity) : null);
+      if (!activeActor) throw new Error("Please log in to book a slot");
+      return activeActor.bookSlot(
         stationId,
         chargingType,
         vehiclePlate,
@@ -119,12 +136,15 @@ export function useBookSlot() {
 
 export function useCancelBooking() {
   const { actor } = useActor();
+  const { identity } = useInternetIdentity();
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (bookingId: bigint) => {
-      if (!actor) throw new Error("Not connected");
-      return actor.cancelBooking(bookingId);
+      const activeActor =
+        actor ?? (identity ? await createFreshActor(identity) : null);
+      if (!activeActor) throw new Error("Please log in to cancel a booking");
+      return activeActor.cancelBooking(bookingId);
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["myBookings"] });
@@ -135,23 +155,19 @@ export function useCancelBooking() {
 
 /**
  * Generate all slots from 8am to 10pm (28 half-hour slots).
- * All slots are marked available by default — real availability
- * comes from the backend once connected.
  */
 export function generateAllSlots(
   dayStart8amNs: bigint,
 ): Array<{ isAvailable: boolean; slotTime: bigint }> {
   const slots: Array<{ isAvailable: boolean; slotTime: bigint }> = [];
   const startMs = Number(dayStart8amNs / 1_000_000n);
-
-  // 8am → 10pm = 28 half-hour slots
   for (let i = 0; i < 28; i++) {
     const slotMs = startMs + i * 30 * 60 * 1000;
     const slotDate = new Date(slotMs);
     if (slotDate.getHours() >= 22) break;
     slots.push({
       slotTime: BigInt(slotMs) * 1_000_000n,
-      isAvailable: true, // all available until backend says otherwise
+      isAvailable: true,
     });
   }
   return slots;

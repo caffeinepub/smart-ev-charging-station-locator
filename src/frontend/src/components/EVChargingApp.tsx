@@ -1301,6 +1301,7 @@ export function EVChargingApp() {
   const [selectedChargingType, setSelectedChargingType] = useState<string>("");
 
   // Vehicle registration
+  const [autoFilledFromProfile, setAutoFilledFromProfile] = useState(false);
   const [vehicleType, setVehicleType] = useState<"bike" | "car" | "other">(
     "car",
   );
@@ -1316,7 +1317,30 @@ export function EVChargingApp() {
   const [myBookingsOpen, setMyBookingsOpen] = useState(false);
   const [activeBrand, setActiveBrand] = useState<string | null>(null);
   const [loginBannerDismissed, setLoginBannerDismissed] = useState(false);
-  const [showProfileMenu, setShowProfileMenu] = useState(false);
+
+  // Profile menu & details
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [profileDetailsOpen, setProfileDetailsOpen] = useState(false);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
+  const [profileName, setProfileName] = useState(
+    () => localStorage.getItem("ev_profile_name") || "",
+  );
+  const [profilePhone, setProfilePhone] = useState(
+    () => localStorage.getItem("ev_profile_phone") || "",
+  );
+  const [profileVehicleType, setProfileVehicleType] = useState(
+    () => localStorage.getItem("ev_profile_vehicleType") || "car",
+  );
+  const [profileVehicleModel, setProfileVehicleModel] = useState(
+    () => localStorage.getItem("ev_profile_vehicleModel") || "",
+  );
+  const [profilePlate, setProfilePlate] = useState(
+    () => localStorage.getItem("ev_profile_plate") || "",
+  );
+  const [profileCapacity, setProfileCapacity] = useState(
+    () => localStorage.getItem("ev_profile_capacity") || "",
+  );
+  const [profileEditing, setProfileEditing] = useState(false);
 
   useEffect(() => {
     if (isLoggedIn) setLoginBannerDismissed(true);
@@ -1538,12 +1562,28 @@ export function EVChargingApp() {
     setVehiclePresetIdx(0);
     setVehicleName("");
     setCustomCapacity("");
+    setAutoFilledFromProfile(false);
     setCurrentCharge("20");
     setBookingConfirmation(null);
   }, []);
 
   const handleChargingTypeSelect = useCallback((type: string) => {
     setSelectedChargingType(type);
+    // Auto-fill vehicle registration from saved profile
+    const savedVehicleType = localStorage.getItem("ev_profile_vehicleType");
+    const savedVehicleModel = localStorage.getItem("ev_profile_vehicleModel");
+    const savedCapacity = localStorage.getItem("ev_profile_capacity");
+    if (
+      savedVehicleType === "bike" ||
+      savedVehicleType === "car" ||
+      savedVehicleType === "other"
+    ) {
+      setVehicleType(savedVehicleType);
+    }
+    if (savedVehicleModel) setVehicleName(savedVehicleModel);
+    if (savedCapacity) setCustomCapacity(savedCapacity);
+    if (savedVehicleModel || savedCapacity) setAutoFilledFromProfile(true);
+    else setAutoFilledFromProfile(false);
     setModalStep("vehicle-registration");
   }, []);
 
@@ -1730,6 +1770,744 @@ export function EVChargingApp() {
         )}
       </AnimatePresence>
 
+      {/* ── Profile Icon (top-left) ── */}
+      <div
+        ref={profileMenuRef}
+        style={{
+          position: "fixed",
+          top: "max(env(safe-area-inset-top, 44px), 44px)",
+          left: 12,
+          zIndex: 510,
+        }}
+      >
+        <button
+          type="button"
+          data-ocid="profile.button"
+          onPointerDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!isLoggedIn) {
+              login();
+              return;
+            }
+            setProfileMenuOpen((prev) => !prev);
+          }}
+          title={isLoggedIn ? "Your profile" : "Sign in to book"}
+          style={{
+            width: 44,
+            height: 44,
+            borderRadius: "50%",
+            background: isLoggedIn ? IOS.blue : "rgba(255,255,255,0.92)",
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
+            border: isLoggedIn ? "none" : "0.5px solid rgba(0,0,0,0.1)",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "pointer",
+            color: isLoggedIn ? "#fff" : IOS.tertiaryLabel,
+            WebkitTapHighlightColor: "transparent",
+            transition: "background 0.2s, transform 0.1s",
+          }}
+        >
+          {isLoggingIn ? (
+            <Loader2
+              size={18}
+              style={{ animation: "spin 0.8s linear infinite" }}
+            />
+          ) : isLoggedIn ? (
+            <User size={18} />
+          ) : (
+            <LogIn size={18} />
+          )}
+        </button>
+
+        {/* Profile dropdown menu */}
+        {profileMenuOpen && isLoggedIn && (
+          <>
+            {/* Backdrop */}
+            <div
+              style={{ position: "fixed", inset: 0, zIndex: 598 }}
+              onPointerDown={(e) => {
+                e.preventDefault();
+                setProfileMenuOpen(false);
+              }}
+            />
+            {/* Menu card */}
+            <div
+              data-ocid="profile.dropdown_menu"
+              style={{
+                position: "absolute",
+                top: "calc(100% + 8px)",
+                left: 0,
+                zIndex: 599,
+                background: "rgba(255,255,255,0.96)",
+                backdropFilter: "blur(20px)",
+                WebkitBackdropFilter: "blur(20px)",
+                borderRadius: 14,
+                boxShadow:
+                  "0 8px 32px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.10)",
+                overflow: "hidden",
+                minWidth: 220,
+                border: "0.5px solid rgba(0,0,0,0.08)",
+              }}
+            >
+              {/* Profile Details */}
+              <button
+                type="button"
+                data-ocid="profile.edit_button"
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setProfileMenuOpen(false);
+                  setProfileDetailsOpen(true);
+                }}
+                style={{
+                  width: "100%",
+                  background: "none",
+                  border: "none",
+                  padding: "14px 16px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                  cursor: "pointer",
+                  textAlign: "left",
+                  WebkitTapHighlightColor: "transparent",
+                }}
+              >
+                <div
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: "50%",
+                    background: "rgba(0,122,255,0.1)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: IOS.blue,
+                    flexShrink: 0,
+                  }}
+                >
+                  <User size={16} />
+                </div>
+                <div>
+                  <div
+                    style={{
+                      ...IOS.font.body,
+                      color: IOS.label,
+                      fontWeight: 500,
+                    }}
+                  >
+                    Profile Details
+                  </div>
+                  <div
+                    style={{
+                      ...IOS.font.caption1,
+                      color: IOS.tertiaryLabel,
+                      marginTop: 1,
+                    }}
+                  >
+                    {profileName || "Add your details"}
+                  </div>
+                </div>
+              </button>
+              {/* Separator */}
+              <div
+                style={{
+                  height: 0.5,
+                  background: IOS.separator,
+                  marginLeft: 60,
+                }}
+              />
+              {/* View My Bookings */}
+              <button
+                type="button"
+                data-ocid="profile.open_modal_button"
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setProfileMenuOpen(false);
+                  setMyBookingsOpen(true);
+                }}
+                style={{
+                  width: "100%",
+                  background: "none",
+                  border: "none",
+                  padding: "14px 16px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                  cursor: "pointer",
+                  textAlign: "left",
+                  WebkitTapHighlightColor: "transparent",
+                }}
+              >
+                <div
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: "50%",
+                    background: "rgba(52,199,89,0.1)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "#34C759",
+                    flexShrink: 0,
+                  }}
+                >
+                  <Calendar size={16} />
+                </div>
+                <div>
+                  <div
+                    style={{
+                      ...IOS.font.body,
+                      color: IOS.label,
+                      fontWeight: 500,
+                    }}
+                  >
+                    View My Bookings
+                  </div>
+                  <div
+                    style={{
+                      ...IOS.font.caption1,
+                      color: IOS.tertiaryLabel,
+                      marginTop: 1,
+                    }}
+                  >
+                    Booking history
+                  </div>
+                </div>
+              </button>
+              {/* Separator */}
+              <div
+                style={{
+                  height: 0.5,
+                  background: IOS.separator,
+                  marginLeft: 60,
+                }}
+              />
+              {/* Logout */}
+              <button
+                type="button"
+                data-ocid="profile.delete_button"
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setProfileMenuOpen(false);
+                  clear();
+                }}
+                style={{
+                  width: "100%",
+                  background: "none",
+                  border: "none",
+                  padding: "14px 16px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                  cursor: "pointer",
+                  textAlign: "left",
+                  WebkitTapHighlightColor: "transparent",
+                }}
+              >
+                <div
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: "50%",
+                    background: "rgba(255,59,48,0.1)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "#FF3B30",
+                    flexShrink: 0,
+                  }}
+                >
+                  <LogOut size={16} />
+                </div>
+                <div
+                  style={{
+                    ...IOS.font.body,
+                    color: "#FF3B30",
+                    fontWeight: 500,
+                  }}
+                >
+                  Logout
+                </div>
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* ── Profile Details Modal ── */}
+      <AnimatePresence>
+        {profileDetailsOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              style={{
+                position: "fixed",
+                inset: 0,
+                background: "rgba(0,0,0,0.4)",
+                zIndex: 820,
+              }}
+              onClick={() => {
+                setProfileDetailsOpen(false);
+                setProfileEditing(false);
+              }}
+            />
+            <motion.div
+              initial={{ opacity: 0, y: 40 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 40 }}
+              transition={{ type: "spring", damping: 22, stiffness: 280 }}
+              data-ocid="profile.modal"
+              style={{
+                position: "fixed",
+                bottom: 0,
+                left: 0,
+                right: 0,
+                zIndex: 830,
+                background: "rgba(242,242,247,0.98)",
+                backdropFilter: "blur(24px)",
+                WebkitBackdropFilter: "blur(24px)",
+                borderRadius: "20px 20px 0 0",
+                padding: "0 0 max(env(safe-area-inset-bottom, 20px), 20px) 0",
+                maxHeight: "85vh",
+                overflowY: "auto",
+              }}
+            >
+              {/* Header */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "16px 16px 8px",
+                }}
+              >
+                <div
+                  style={{
+                    ...IOS.font.title3,
+                    color: IOS.label,
+                    fontWeight: 700,
+                  }}
+                >
+                  Profile
+                </div>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  {!profileEditing ? (
+                    <button
+                      type="button"
+                      data-ocid="profile.edit_button"
+                      onPointerDown={(e) => {
+                        e.preventDefault();
+                        setProfileEditing(true);
+                      }}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        ...IOS.font.body,
+                        color: IOS.blue,
+                        fontWeight: 500,
+                      }}
+                    >
+                      Edit
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      data-ocid="profile.save_button"
+                      onPointerDown={(e) => {
+                        e.preventDefault();
+                        localStorage.setItem("ev_profile_name", profileName);
+                        localStorage.setItem("ev_profile_phone", profilePhone);
+                        localStorage.setItem(
+                          "ev_profile_vehicleType",
+                          profileVehicleType,
+                        );
+                        localStorage.setItem(
+                          "ev_profile_vehicleModel",
+                          profileVehicleModel,
+                        );
+                        localStorage.setItem("ev_profile_plate", profilePlate);
+                        localStorage.setItem(
+                          "ev_profile_capacity",
+                          profileCapacity,
+                        );
+                        setProfileEditing(false);
+                      }}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        ...IOS.font.body,
+                        color: IOS.blue,
+                        fontWeight: 600,
+                      }}
+                    >
+                      Save
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    data-ocid="profile.close_button"
+                    onPointerDown={(e) => {
+                      e.preventDefault();
+                      setProfileDetailsOpen(false);
+                      setProfileEditing(false);
+                    }}
+                    style={{
+                      background: "rgba(120,120,128,0.16)",
+                      border: "none",
+                      cursor: "pointer",
+                      width: 28,
+                      height: 28,
+                      borderRadius: "50%",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: IOS.secondaryLabel,
+                    }}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Avatar */}
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  padding: "12px 16px 20px",
+                }}
+              >
+                <div
+                  style={{
+                    width: 72,
+                    height: 72,
+                    borderRadius: "50%",
+                    background: IOS.blue,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "#fff",
+                    marginBottom: 8,
+                  }}
+                >
+                  <User size={32} />
+                </div>
+                <div
+                  style={{
+                    ...IOS.font.headline,
+                    color: IOS.label,
+                    fontWeight: 600,
+                  }}
+                >
+                  {profileName || "EV Driver"}
+                </div>
+                <div style={{ ...IOS.font.caption1, color: IOS.tertiaryLabel }}>
+                  {`${identity?.getPrincipal().toString().slice(0, 20)}...`}
+                </div>
+              </div>
+
+              {/* Form */}
+              <div
+                style={{
+                  padding: "0 16px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 12,
+                }}
+              >
+                {/* Personal Info */}
+                <div
+                  style={{
+                    ...IOS.font.footnote,
+                    color: IOS.tertiaryLabel,
+                    fontWeight: 600,
+                    textTransform: "uppercase",
+                    letterSpacing: 0.5,
+                    paddingLeft: 4,
+                    marginBottom: 4,
+                  }}
+                >
+                  Personal Info
+                </div>
+                <div
+                  style={{
+                    background: "#fff",
+                    borderRadius: 12,
+                    overflow: "hidden",
+                  }}
+                >
+                  {[
+                    {
+                      label: "Full Name",
+                      value: profileName,
+                      onChange: setProfileName,
+                      placeholder: "Your name",
+                      key: "name",
+                    },
+                    {
+                      label: "Phone Number",
+                      value: profilePhone,
+                      onChange: setProfilePhone,
+                      placeholder: "+91 XXXXX XXXXX",
+                      key: "phone",
+                    },
+                  ].map((field, i, arr) => (
+                    <div key={field.key}>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          padding: "13px 16px",
+                          gap: 12,
+                        }}
+                      >
+                        <div
+                          style={{
+                            ...IOS.font.subheadline,
+                            color: IOS.label,
+                            minWidth: 100,
+                            fontWeight: 500,
+                          }}
+                        >
+                          {field.label}
+                        </div>
+                        {profileEditing ? (
+                          <input
+                            data-ocid={`profile.${field.key === "name" ? "input" : "input"}`}
+                            value={field.value}
+                            onChange={(e) => field.onChange(e.target.value)}
+                            placeholder={field.placeholder}
+                            style={{
+                              flex: 1,
+                              border: "none",
+                              outline: "none",
+                              ...IOS.font.subheadline,
+                              color: IOS.label,
+                              background: "transparent",
+                              textAlign: "right",
+                            }}
+                          />
+                        ) : (
+                          <div
+                            style={{
+                              flex: 1,
+                              ...IOS.font.subheadline,
+                              color: field.value
+                                ? IOS.label
+                                : IOS.tertiaryLabel,
+                              textAlign: "right",
+                            }}
+                          >
+                            {field.value || field.placeholder}
+                          </div>
+                        )}
+                      </div>
+                      {i < arr.length - 1 && (
+                        <div
+                          style={{
+                            height: 0.5,
+                            background: IOS.separator,
+                            marginLeft: 16,
+                          }}
+                        />
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Vehicle Info */}
+                <div
+                  style={{
+                    ...IOS.font.footnote,
+                    color: IOS.tertiaryLabel,
+                    fontWeight: 600,
+                    textTransform: "uppercase",
+                    letterSpacing: 0.5,
+                    paddingLeft: 4,
+                    marginBottom: 4,
+                    marginTop: 8,
+                  }}
+                >
+                  Vehicle Info
+                </div>
+                <div
+                  style={{
+                    background: "#fff",
+                    borderRadius: 12,
+                    overflow: "hidden",
+                  }}
+                >
+                  {/* Vehicle Type */}
+                  <div style={{ padding: "13px 16px" }}>
+                    <div
+                      style={{
+                        ...IOS.font.subheadline,
+                        color: IOS.label,
+                        marginBottom: 8,
+                        fontWeight: 500,
+                      }}
+                    >
+                      Vehicle Type
+                    </div>
+                    {profileEditing ? (
+                      <div style={{ display: "flex", gap: 8 }}>
+                        {(["bike", "car", "other"] as const).map((t) => (
+                          <button
+                            key={t}
+                            type="button"
+                            onPointerDown={(e) => {
+                              e.preventDefault();
+                              setProfileVehicleType(t);
+                            }}
+                            style={{
+                              flex: 1,
+                              padding: "8px 4px",
+                              borderRadius: 8,
+                              border: "none",
+                              cursor: "pointer",
+                              background:
+                                profileVehicleType === t
+                                  ? IOS.blue
+                                  : "rgba(120,120,128,0.12)",
+                              color:
+                                profileVehicleType === t ? "#fff" : IOS.label,
+                              ...IOS.font.footnote,
+                              fontWeight: 500,
+                              textTransform: "capitalize",
+                            }}
+                          >
+                            {t === "other"
+                              ? "Other"
+                              : t.charAt(0).toUpperCase() + t.slice(1)}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div
+                        style={{
+                          ...IOS.font.subheadline,
+                          color: profileVehicleType
+                            ? IOS.label
+                            : IOS.tertiaryLabel,
+                        }}
+                      >
+                        {profileVehicleType
+                          ? profileVehicleType.charAt(0).toUpperCase() +
+                            profileVehicleType.slice(1)
+                          : "Not set"}
+                      </div>
+                    )}
+                  </div>
+                  <div
+                    style={{
+                      height: 0.5,
+                      background: IOS.separator,
+                      marginLeft: 16,
+                    }}
+                  />
+                  {[
+                    {
+                      label: "EV Model",
+                      value: profileVehicleModel,
+                      onChange: setProfileVehicleModel,
+                      placeholder: "e.g. Ather 450X",
+                      key: "model",
+                    },
+                    {
+                      label: "Number Plate",
+                      value: profilePlate,
+                      onChange: setProfilePlate,
+                      placeholder: "e.g. KA01AB1234",
+                      key: "plate",
+                    },
+                    {
+                      label: "Battery (kWh)",
+                      value: profileCapacity,
+                      onChange: setProfileCapacity,
+                      placeholder: "e.g. 6.4",
+                      key: "battery",
+                    },
+                  ].map((field, i, arr) => (
+                    <div key={field.key}>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          padding: "13px 16px",
+                          gap: 12,
+                        }}
+                      >
+                        <div
+                          style={{
+                            ...IOS.font.subheadline,
+                            color: IOS.label,
+                            minWidth: 100,
+                            fontWeight: 500,
+                          }}
+                        >
+                          {field.label}
+                        </div>
+                        {profileEditing ? (
+                          <input
+                            data-ocid="profile.input"
+                            value={field.value}
+                            onChange={(e) => field.onChange(e.target.value)}
+                            placeholder={field.placeholder}
+                            style={{
+                              flex: 1,
+                              border: "none",
+                              outline: "none",
+                              ...IOS.font.subheadline,
+                              color: IOS.label,
+                              background: "transparent",
+                              textAlign: "right",
+                            }}
+                          />
+                        ) : (
+                          <div
+                            style={{
+                              flex: 1,
+                              ...IOS.font.subheadline,
+                              color: field.value
+                                ? IOS.label
+                                : IOS.tertiaryLabel,
+                              textAlign: "right",
+                            }}
+                          >
+                            {field.value || field.placeholder}
+                          </div>
+                        )}
+                      </div>
+                      {i < arr.length - 1 && (
+                        <div
+                          style={{
+                            height: 0.5,
+                            background: IOS.separator,
+                            marginLeft: 16,
+                          }}
+                        />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div style={{ height: 20 }} />
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
       {/* ── iOS Search Bar (top) ── */}
       <AnimatePresence>
         {!hasRoute && (
@@ -1741,10 +2519,10 @@ export function EVChargingApp() {
             style={{
               position: "fixed",
               top: "max(env(safe-area-inset-top, 44px), 44px)",
-              left: 12,
+              left: 68,
               right: 12,
-              width: "calc(100vw - 24px)",
-              maxWidth: 540,
+              width: "calc(100vw - 80px)",
+              maxWidth: 480,
               zIndex: 500,
             }}
           >
@@ -1818,172 +2596,6 @@ export function EVChargingApp() {
                 >
                   <X size={16} />
                 </button>
-              )}
-
-              {/* iOS vertical separator */}
-              <div
-                style={{
-                  width: "0.5px",
-                  height: 22,
-                  background: IOS.separator,
-                  margin: "0 2px 0 4px",
-                  flexShrink: 0,
-                  alignSelf: "center",
-                }}
-              />
-
-              {/* User/login avatar button */}
-              <button
-                type="button"
-                data-ocid="login.button"
-                onClick={
-                  isLoggedIn ? () => setShowProfileMenu((v) => !v) : login
-                }
-                disabled={isLoggingIn || isInitializing}
-                title={
-                  isLoggedIn ? "Logged in — tap to logout" : "Sign in to book"
-                }
-                style={{
-                  background: "none",
-                  border: "none",
-                  cursor:
-                    isLoggingIn || isInitializing ? "not-allowed" : "pointer",
-                  padding: "0 12px 0 8px",
-                  display: "flex",
-                  alignItems: "center",
-                  height: "100%",
-                  opacity: isLoggingIn || isInitializing ? 0.6 : 1,
-                  WebkitTapHighlightColor: "transparent",
-                }}
-              >
-                <div
-                  style={{
-                    width: 30,
-                    height: 30,
-                    borderRadius: "50%",
-                    background: isLoggedIn
-                      ? IOS.blue
-                      : "rgba(120,120,128,0.16)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: isLoggedIn ? "#fff" : IOS.tertiaryLabel,
-                    transition: "background 0.2s",
-                  }}
-                >
-                  {isLoggingIn ? (
-                    <Loader2
-                      size={14}
-                      style={{ animation: "spin 0.8s linear infinite" }}
-                    />
-                  ) : isLoggedIn ? (
-                    <User size={14} />
-                  ) : (
-                    <LogIn size={14} />
-                  )}
-                </div>
-              </button>
-              {/* Profile Dropdown Menu */}
-              {showProfileMenu && isLoggedIn && (
-                <>
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) =>
-                      e.key === "Escape" && setShowProfileMenu(false)
-                    }
-                    style={{ position: "fixed", inset: 0, zIndex: 998 }}
-                    onClick={() => setShowProfileMenu(false)}
-                  />
-                  <div
-                    data-ocid="profile.dropdown_menu"
-                    style={{
-                      position: "fixed",
-                      top: "calc(max(env(safe-area-inset-top, 44px), 44px) + 54px)",
-                      right: 12,
-                      zIndex: 999,
-                      background: "rgba(255,255,255,0.97)",
-                      backdropFilter: "blur(20px)",
-                      WebkitBackdropFilter: "blur(20px)",
-                      borderRadius: 14,
-                      boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
-                      minWidth: 200,
-                      overflow: "hidden",
-                      border: "1px solid rgba(0,0,0,0.08)",
-                    }}
-                  >
-                    <button
-                      data-ocid="profile.view_profile.button"
-                      type="button"
-                      onClick={() => {
-                        setShowProfileMenu(false);
-                      }}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 12,
-                        width: "100%",
-                        padding: "14px 16px",
-                        background: "none",
-                        border: "none",
-                        cursor: "pointer",
-                        fontSize: 15,
-                        color: "#1c1c1e",
-                        borderBottom: "1px solid rgba(0,0,0,0.06)",
-                      }}
-                    >
-                      <User size={18} color="#007AFF" />
-                      <span>View Profile</span>
-                    </button>
-                    <button
-                      data-ocid="profile.my_bookings.button"
-                      type="button"
-                      onClick={() => {
-                        setShowProfileMenu(false);
-                        setMyBookingsOpen(true);
-                      }}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 12,
-                        width: "100%",
-                        padding: "14px 16px",
-                        background: "none",
-                        border: "none",
-                        cursor: "pointer",
-                        fontSize: 15,
-                        color: "#1c1c1e",
-                        borderBottom: "1px solid rgba(0,0,0,0.06)",
-                      }}
-                    >
-                      <Calendar size={18} color="#007AFF" />
-                      <span>View My Bookings</span>
-                    </button>
-                    <button
-                      data-ocid="profile.logout.button"
-                      type="button"
-                      onClick={() => {
-                        setShowProfileMenu(false);
-                        clear();
-                      }}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 12,
-                        width: "100%",
-                        padding: "14px 16px",
-                        background: "none",
-                        border: "none",
-                        cursor: "pointer",
-                        fontSize: 15,
-                        color: "#FF3B30",
-                      }}
-                    >
-                      <LogOut size={18} color="#FF3B30" />
-                      <span>Logout</span>
-                    </button>
-                  </div>
-                </>
               )}
             </div>
           </motion.div>
@@ -3196,6 +3808,47 @@ export function EVChargingApp() {
                         ←
                       </button>
                     </div>
+                    {/* Auto-fill chip */}
+                    {autoFilledFromProfile && (
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          marginBottom: 14,
+                          padding: "8px 12px",
+                          borderRadius: IOS.radius.lg,
+                          background: "#007AFF18",
+                          border: "1px solid #007AFF40",
+                        }}
+                      >
+                        <span style={{ fontSize: 14 }}>✓</span>
+                        <span
+                          style={{
+                            ...IOS.font.caption1,
+                            color: "#007AFF",
+                            flex: 1,
+                          }}
+                        >
+                          Auto-filled from your saved profile
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setAutoFilledFromProfile(false)}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            color: "#007AFF",
+                            cursor: "pointer",
+                            fontSize: 16,
+                            lineHeight: 1,
+                            padding: 0,
+                          }}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    )}
 
                     <div
                       style={{
@@ -3331,7 +3984,10 @@ export function EVChargingApp() {
                             type="text"
                             value={vehicleName}
                             onChange={(e) => setVehicleName(e.target.value)}
-                            placeholder="e.g. MH12 AB 1234"
+                            placeholder={
+                              localStorage.getItem("ev_profile_plate") ||
+                              "e.g. MH12 AB 1234"
+                            }
                             style={iosInputStyle}
                           />
                         </div>
