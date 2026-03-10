@@ -23,6 +23,7 @@ import { toast } from "sonner";
 import { useInternetIdentity } from "../hooks/useInternetIdentity";
 import { BookingSuccess } from "./BookingSuccess";
 import { MyBookings } from "./MyBookings";
+import ProfileView from "./ProfileView";
 import { type BookingConfirmation, SlotBooking } from "./SlotBooking";
 
 // ─── iOS Design Tokens ────────────────────────────────────────────────────────
@@ -1318,6 +1319,7 @@ export function EVChargingApp() {
   const [loginBannerDismissed, setLoginBannerDismissed] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [profileMenuReady, setProfileMenuReady] = useState(false);
+  const [showProfileView, setShowProfileView] = useState(false);
 
   useEffect(() => {
     if (isLoggedIn) setLoginBannerDismissed(true);
@@ -1932,6 +1934,7 @@ export function EVChargingApp() {
                       type="button"
                       onClick={() => {
                         setShowProfileMenu(false);
+                        setShowProfileView(true);
                       }}
                       style={{
                         display: "flex",
@@ -3589,6 +3592,12 @@ export function EVChargingApp() {
           </motion.div>
         )}
       </AnimatePresence>
+      {showProfileView && (
+        <ProfileView
+          onClose={() => setShowProfileView(false)}
+          principalId={identity?.getPrincipal().toText()}
+        />
+      )}
     </div>
   );
 }
