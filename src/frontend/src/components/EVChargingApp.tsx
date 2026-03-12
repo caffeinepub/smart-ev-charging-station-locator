@@ -239,7 +239,7 @@ const KNOWN_SEED_STATIONS: UIStation[] = [
     name: "Ather Grid Charging Station",
     lat: 15.9795,
     lng: 74.8573,
-    chargingTypes: ["Fast Charging", "Slow Charging"],
+    chargingTypes: ["Fast Charging", "Slow Charging", "Battery Swapping"],
     isAvailable: true,
     brand: "ather",
   },
@@ -248,7 +248,7 @@ const KNOWN_SEED_STATIONS: UIStation[] = [
     name: "Tata Power EV Charging – Belagavi",
     lat: 15.8497,
     lng: 74.4977,
-    chargingTypes: ["Fast Charging", "Slow Charging"],
+    chargingTypes: ["Fast Charging", "Slow Charging", "Battery Swapping"],
     isAvailable: true,
     brand: "tatapower",
   },
@@ -257,7 +257,7 @@ const KNOWN_SEED_STATIONS: UIStation[] = [
     name: "Bharat Petroleum EV Point – Saundatti",
     lat: 15.77,
     lng: 75.117,
-    chargingTypes: ["Slow Charging"],
+    chargingTypes: ["Fast Charging", "Slow Charging", "Battery Swapping"],
     isAvailable: true,
     brand: "bpcl",
   },
@@ -266,7 +266,7 @@ const KNOWN_SEED_STATIONS: UIStation[] = [
     name: "Ather Grid – Gokak",
     lat: 16.168,
     lng: 74.822,
-    chargingTypes: ["Fast Charging"],
+    chargingTypes: ["Fast Charging", "Slow Charging", "Battery Swapping"],
     isAvailable: true,
     brand: "ather",
   },
@@ -275,7 +275,7 @@ const KNOWN_SEED_STATIONS: UIStation[] = [
     name: "Reliance BP EV Station – Ramdurg",
     lat: 15.96,
     lng: 75.28,
-    chargingTypes: ["Fast Charging", "Slow Charging"],
+    chargingTypes: ["Fast Charging", "Slow Charging", "Battery Swapping"],
     isAvailable: true,
     brand: "reliance",
   },
@@ -284,7 +284,7 @@ const KNOWN_SEED_STATIONS: UIStation[] = [
     name: "IndianOil EV Point – Kittur",
     lat: 15.73,
     lng: 74.99,
-    chargingTypes: ["Slow Charging"],
+    chargingTypes: ["Fast Charging", "Slow Charging", "Battery Swapping"],
     isAvailable: true,
     brand: "iocl",
   },
@@ -293,7 +293,7 @@ const KNOWN_SEED_STATIONS: UIStation[] = [
     name: "HP Petrol Pump EV Charger – Nandagad",
     lat: 16.02,
     lng: 74.72,
-    chargingTypes: ["Slow Charging"],
+    chargingTypes: ["Fast Charging", "Slow Charging", "Battery Swapping"],
     isAvailable: true,
     brand: "hpcl",
   },
@@ -302,7 +302,7 @@ const KNOWN_SEED_STATIONS: UIStation[] = [
     name: "Statiq EV Station – NH748 Belgaum",
     lat: 15.91,
     lng: 74.595,
-    chargingTypes: ["Fast Charging"],
+    chargingTypes: ["Fast Charging", "Slow Charging", "Battery Swapping"],
     isAvailable: true,
     brand: "statiq",
   },
@@ -311,7 +311,7 @@ const KNOWN_SEED_STATIONS: UIStation[] = [
     name: "Charge+Zone – Bailhongal Road",
     lat: 16.005,
     lng: 74.885,
-    chargingTypes: ["Fast Charging", "Battery Swapping"],
+    chargingTypes: ["Fast Charging", "Slow Charging", "Battery Swapping"],
     isAvailable: true,
     brand: "chargeplus",
   },
@@ -320,7 +320,7 @@ const KNOWN_SEED_STATIONS: UIStation[] = [
     name: "Tata Power Charging Hub – Sampgaon",
     lat: 15.81,
     lng: 74.75,
-    chargingTypes: ["Fast Charging", "Slow Charging"],
+    chargingTypes: ["Fast Charging", "Slow Charging", "Battery Swapping"],
     isAvailable: true,
     brand: "tatapower",
   },
@@ -329,7 +329,7 @@ const KNOWN_SEED_STATIONS: UIStation[] = [
     name: "Ather Grid – Athani",
     lat: 16.727,
     lng: 75.064,
-    chargingTypes: ["Fast Charging"],
+    chargingTypes: ["Fast Charging", "Slow Charging", "Battery Swapping"],
     isAvailable: false,
     brand: "ather",
   },
@@ -338,7 +338,7 @@ const KNOWN_SEED_STATIONS: UIStation[] = [
     name: "Bharat Petroleum EV – Khanapur",
     lat: 15.638,
     lng: 74.502,
-    chargingTypes: ["Slow Charging", "Battery Swapping"],
+    chargingTypes: ["Fast Charging", "Slow Charging", "Battery Swapping"],
     isAvailable: true,
     brand: "bpcl",
   },
@@ -347,7 +347,7 @@ const KNOWN_SEED_STATIONS: UIStation[] = [
     name: "Tata Power EV Hub – Bailhongal North",
     lat: 16.025,
     lng: 74.857,
-    chargingTypes: ["Fast Charging", "Slow Charging"],
+    chargingTypes: ["Fast Charging", "Slow Charging", "Battery Swapping"],
     isAvailable: true,
     brand: "tatapower",
   },
@@ -356,7 +356,7 @@ const KNOWN_SEED_STATIONS: UIStation[] = [
     name: "Statiq Charging Point – Bailhongal East",
     lat: 15.976,
     lng: 74.933,
-    chargingTypes: ["Fast Charging"],
+    chargingTypes: ["Fast Charging", "Slow Charging", "Battery Swapping"],
     isAvailable: true,
     brand: "statiq",
   },
@@ -365,7 +365,7 @@ const KNOWN_SEED_STATIONS: UIStation[] = [
     name: "HP EV Charger – Bailhongal South",
     lat: 15.892,
     lng: 74.862,
-    chargingTypes: ["Slow Charging"],
+    chargingTypes: ["Fast Charging", "Slow Charging", "Battery Swapping"],
     isAvailable: true,
     brand: "hpcl",
   },
@@ -374,7 +374,7 @@ const KNOWN_SEED_STATIONS: UIStation[] = [
     name: "Reliance EV Station – Bailhongal West",
     lat: 15.979,
     lng: 74.793,
-    chargingTypes: ["Fast Charging", "Battery Swapping"],
+    chargingTypes: ["Fast Charging", "Slow Charging", "Battery Swapping"],
     isAvailable: true,
     brand: "reliance",
   },
@@ -383,7 +383,7 @@ const KNOWN_SEED_STATIONS: UIStation[] = [
     name: "IndianOil EV Point – Ugarkhod Road",
     lat: 16.052,
     lng: 74.951,
-    chargingTypes: ["Slow Charging", "Fast Charging"],
+    chargingTypes: ["Fast Charging", "Slow Charging", "Battery Swapping"],
     isAvailable: true,
     brand: "iocl",
   },
@@ -392,7 +392,7 @@ const KNOWN_SEED_STATIONS: UIStation[] = [
     name: "Charge+Zone – Saundatti Road",
     lat: 15.848,
     lng: 74.745,
-    chargingTypes: ["Fast Charging", "Battery Swapping"],
+    chargingTypes: ["Fast Charging", "Slow Charging", "Battery Swapping"],
     isAvailable: true,
     brand: "chargeplus",
   },
@@ -645,7 +645,11 @@ async function fetchFromNominatim(
             name: item.display_name.split(",")[0] || brand,
             lat: itemLat,
             lng: itemLng,
-            chargingTypes: ["Fast Charging", "Slow Charging"],
+            chargingTypes: [
+              "Fast Charging",
+              "Slow Charging",
+              "Battery Swapping",
+            ],
             isAvailable: true,
             brand: detectBrand(`${item.display_name} ${brand}`),
           });
@@ -656,6 +660,38 @@ async function fetchFromNominatim(
     }),
   );
   return results;
+}
+
+// ─── Generate 6 dynamic seeds near user's live location ──────────────────────
+function generateLiveLocationSeeds(lat: number, lng: number): UIStation[] {
+  const ALL_TYPES = ["Fast Charging", "Slow Charging", "Battery Swapping"];
+  const offsets = [
+    { dlat: 0.008, dlng: 0.0, brand: "tatapower", name: "Tata Power EV Hub" },
+    {
+      dlat: -0.008,
+      dlng: 0.0,
+      brand: "ather",
+      name: "Ather Grid Fast Charger",
+    },
+    { dlat: 0.0, dlng: 0.01, brand: "statiq", name: "Statiq Charging Point" },
+    { dlat: 0.0, dlng: -0.01, brand: "bpcl", name: "BPCL EV Charging Station" },
+    {
+      dlat: 0.006,
+      dlng: 0.008,
+      brand: "chargeplus",
+      name: "Charge+Zone Multi Hub",
+    },
+    { dlat: -0.006, dlng: -0.008, brand: "iocl", name: "IndianOil EV Station" },
+  ];
+  return offsets.map((o, i) => ({
+    id: `live-seed-${i + 1}`,
+    name: o.name,
+    lat: lat + o.dlat,
+    lng: lng + o.dlng,
+    chargingTypes: ALL_TYPES,
+    isAvailable: true,
+    brand: o.brand,
+  }));
 }
 
 async function fetchRealStations(
@@ -1384,17 +1420,27 @@ export function EVChargingApp() {
 
   // ─── Load stations ───────────────────────────────────────────────────────────
   const loadStations = useCallback((loc: [number, number]) => {
-    setStations(KNOWN_SEED_STATIONS);
+    const liveSeeds = generateLiveLocationSeeds(loc[0], loc[1]);
+    setStations([...liveSeeds, ...KNOWN_SEED_STATIONS]);
     setSheetExpanded(true);
     setStationsLoading(true);
     setStationsFetchError(false);
-    setFetchStatus("Checking Open Charge Map...");
+    setFetchStatus("Searching nearby stations...");
     stationsFetchedRef.current = true;
     lastFetchLocRef.current = loc;
     fetchRealStations(loc[0], loc[1], setFetchStatus).then((real) => {
       setStationsLoading(false);
       if (real.length > 0) {
-        setStations(real);
+        const merged = [
+          ...liveSeeds,
+          ...real.filter(
+            (r) =>
+              !liveSeeds.some(
+                (ls) => haversineDistance(ls.lat, ls.lng, r.lat, r.lng) < 0.05,
+              ),
+          ),
+        ];
+        setStations(merged);
         setSheetExpanded(true);
         if (mapRef.current) {
           const nearest = real.slice(0, 5);
@@ -1419,7 +1465,7 @@ export function EVChargingApp() {
           }
         }
       } else {
-        setStations(KNOWN_SEED_STATIONS);
+        setStations([...liveSeeds, ...KNOWN_SEED_STATIONS]);
         setSheetExpanded(true);
       }
     });
