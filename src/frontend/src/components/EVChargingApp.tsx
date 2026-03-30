@@ -1326,6 +1326,8 @@ export function EVChargingApp() {
   const [hasRoute, setHasRoute] = useState(false);
   const [routeDistance, setRouteDistance] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [_isGeoSearching, setIsGeoSearching] = useState(false);
+  const [geoSearchError, setGeoSearchError] = useState<string | null>(null);
   const [sheetExpanded, setSheetExpanded] = useState(false);
   const [mapStyle, setMapStyle] = useState<"standard" | "satellite">(
     "standard",
@@ -1401,9 +1403,12 @@ export function EVChargingApp() {
     });
 
   const filteredStations = sortedStations.filter((s) => {
+    const brandLabel = s.brand ? (BRAND_CONFIG[s.brand]?.label ?? s.brand) : "";
     const matchesSearch =
       searchQuery === "" ||
-      s.name.toLowerCase().includes(searchQuery.toLowerCase());
+      s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      brandLabel.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (s.brand ?? "").toLowerCase().includes(searchQuery.toLowerCase());
     const matchesBrand =
       !activeBrand || activeBrand === "all"
         ? true
@@ -1747,6 +1752,52 @@ export function EVChargingApp() {
       toast.info("Waiting for GPS signal...");
     }
   }, [userLocation]);
+
+  const handleGeoSearch = useCallback(
+    async (query: string) => {
+      if (!query.trim()) return;
+      // First, check if query matches any station name/brand -- if so, just filter, don't geocode
+      const lowerQ = query.toLowerCase();
+      const stationMatch = stations.some(
+        (s) =>
+          s.name.toLowerCase().includes(lowerQ) ||
+          (s.brand &&
+            (BRAND_CONFIG[s.brand]?.label ?? s.brand)
+              .toLowerCase()
+              .includes(lowerQ)),
+      );
+      if (stationMatch) {
+        setSheetExpanded(true);
+        return;
+      }
+      // Otherwise geocode via Nominatim
+      setIsGeoSearching(true);
+      setGeoSearchError(null);
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`,
+          { headers: { "Accept-Language": "en" } },
+        );
+        const data = await res.json();
+        if (data && data.length > 0) {
+          const { lat, lon } = data[0];
+          mapRef.current?.flyTo(
+            [Number.parseFloat(lat), Number.parseFloat(lon)],
+            14,
+            { duration: 1.2 },
+          );
+          setGeoSearchError(null);
+        } else {
+          setGeoSearchError("Location not found");
+        }
+      } catch {
+        setGeoSearchError("Search failed");
+      } finally {
+        setIsGeoSearching(false);
+      }
+    },
+    [stations],
+  );
 
   const handleSelectStation = useCallback((station: UIStation) => {
     setSelectedStation(station);
@@ -2557,94 +2608,114 @@ export function EVChargingApp() {
       {/* ── iOS Search Bar (top) ── */}
       <AnimatePresence>
         {!hasRoute && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.2 }}
-            style={{
-              position: "fixed",
-              top: "max(env(safe-area-inset-top, 44px), 44px)",
-              left: 68,
-              right: 12,
-              width: "calc(100vw - 80px)",
-              maxWidth: 480,
-              zIndex: 500,
-            }}
-          >
-            <div
+          <>
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
               style={{
-                background: "rgba(255,255,255,0.92)",
-                backdropFilter: IOS.blurLight,
-                WebkitBackdropFilter: IOS.blurLight,
-                borderRadius: IOS.radius.md,
-                boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
-                display: "flex",
-                alignItems: "center",
-                height: 44,
-                gap: 0,
-                overflow: "hidden",
+                position: "fixed",
+                top: "max(env(safe-area-inset-top, 44px), 44px)",
+                left: 68,
+                right: 12,
+                width: "calc(100vw - 80px)",
+                maxWidth: 480,
+                zIndex: 500,
               }}
             >
-              {/* Search icon */}
               <div
                 style={{
+                  background: "rgba(255,255,255,0.92)",
+                  backdropFilter: IOS.blurLight,
+                  WebkitBackdropFilter: IOS.blurLight,
+                  borderRadius: IOS.radius.md,
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
                   display: "flex",
                   alignItems: "center",
-                  padding: "0 10px 0 14px",
-                  color: IOS.tertiaryLabel,
-                  flexShrink: 0,
+                  height: 44,
+                  gap: 0,
+                  overflow: "hidden",
                 }}
               >
-                <Search size={17} />
-              </div>
-
-              {/* Search input */}
-              <input
-                data-ocid="search.search_input"
-                type="text"
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  if (!sheetExpanded) setSheetExpanded(true);
-                }}
-                placeholder="Search"
-                style={{
-                  flex: 1,
-                  border: "none",
-                  outline: "none",
-                  ...IOS.font.body,
-                  fontFamily:
-                    '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Sora", system-ui, sans-serif',
-                  fontWeight: searchQuery ? 400 : 400,
-                  color: IOS.label,
-                  background: "transparent",
-                  padding: "0 4px",
-                  WebkitTextSizeAdjust: "100%",
-                  WebkitTapHighlightColor: "transparent",
-                }}
-              />
-
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery("")}
+                {/* Search icon */}
+                <div
                   style={{
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    padding: "0 8px",
                     display: "flex",
                     alignItems: "center",
+                    padding: "0 10px 0 14px",
                     color: IOS.tertiaryLabel,
-                    WebkitTapHighlightColor: "transparent",
+                    flexShrink: 0,
                   }}
                 >
-                  <X size={16} />
-                </button>
-              )}
-            </div>
-          </motion.div>
+                  <Search size={17} />
+                </div>
+
+                {/* Search input */}
+                <input
+                  data-ocid="search.search_input"
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    if (!sheetExpanded) setSheetExpanded(true);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleGeoSearch(searchQuery);
+                    }
+                  }}
+                  placeholder="Search"
+                  style={{
+                    flex: 1,
+                    border: "none",
+                    outline: "none",
+                    ...IOS.font.body,
+                    fontFamily:
+                      '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Sora", system-ui, sans-serif',
+                    fontWeight: searchQuery ? 400 : 400,
+                    color: IOS.label,
+                    background: "transparent",
+                    padding: "0 4px",
+                    WebkitTextSizeAdjust: "100%",
+                    WebkitTapHighlightColor: "transparent",
+                  }}
+                />
+
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery("")}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      padding: "0 8px",
+                      display: "flex",
+                      alignItems: "center",
+                      color: IOS.tertiaryLabel,
+                      WebkitTapHighlightColor: "transparent",
+                    }}
+                  >
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
+            </motion.div>
+            {geoSearchError && (
+              <div
+                style={{
+                  color: "#FF3B30",
+                  fontSize: 12,
+                  padding: "4px 16px 0",
+                  textAlign: "center",
+                }}
+              >
+                {geoSearchError}
+              </div>
+            )}
+          </>
         )}
       </AnimatePresence>
 

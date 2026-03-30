@@ -95,10 +95,18 @@ export function useGetCallerRole() {
 async function createFreshActor(
   identity: import("@icp-sdk/core/agent").Identity,
 ) {
-  const actor = await createActorWithConfig({ agentOptions: { identity } });
-  const adminToken = getSecretParameter("caffeineAdminToken") ?? "";
-  await actor._initializeAccessControlWithSecret(adminToken);
-  return actor;
+  try {
+    const actor = await createActorWithConfig({ agentOptions: { identity } });
+    const adminToken = getSecretParameter("caffeineAdminToken") ?? "";
+    try {
+      await actor._initializeAccessControlWithSecret(adminToken);
+    } catch {
+      // ignore -- regular booking doesn't need admin access
+    }
+    return actor;
+  } catch {
+    throw new Error("Could not connect to server. Please try again.");
+  }
 }
 
 export function useBookSlot() {
@@ -121,8 +129,14 @@ export function useBookSlot() {
       estimatedDurationMinutes: bigint;
     }) => {
       // Use cached actor if ready; otherwise build a fresh one from identity
-      const activeActor =
-        actor ?? (identity ? await createFreshActor(identity) : null);
+      let activeActor = actor;
+      if (!activeActor && identity) {
+        try {
+          activeActor = await createFreshActor(identity);
+        } catch {
+          throw new Error("Could not connect to server. Please try again.");
+        }
+      }
       if (!activeActor) throw new Error("Please log in to book a slot");
       return activeActor.bookSlot(
         stationId,
@@ -146,8 +160,14 @@ export function useCancelBooking() {
 
   return useMutation({
     mutationFn: async (bookingId: bigint) => {
-      const activeActor =
-        actor ?? (identity ? await createFreshActor(identity) : null);
+      let activeActor = actor;
+      if (!activeActor && identity) {
+        try {
+          activeActor = await createFreshActor(identity);
+        } catch {
+          throw new Error("Could not connect to server. Please try again.");
+        }
+      }
       if (!activeActor) throw new Error("Please log in to cancel a booking");
       return activeActor.cancelBooking(bookingId);
     },
