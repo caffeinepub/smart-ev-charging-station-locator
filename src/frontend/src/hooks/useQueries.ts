@@ -5,6 +5,8 @@ import { getSecretParameter } from "../utils/urlParams";
 import { useActor } from "./useActor";
 import { useInternetIdentity } from "./useInternetIdentity";
 
+type SlotData = { isAvailable: boolean; slotTime: bigint };
+
 export function useGetStations() {
   const { actor, isFetching } = useActor();
   return useQuery({
@@ -24,7 +26,7 @@ export function useGetAvailableSlots(
   dateEnd: bigint | null,
 ) {
   const { actor } = useActor();
-  return useQuery<Array<{ isAvailable: boolean; slotTime: bigint }>>({
+  return useQuery<SlotData[]>({
     queryKey: ["availableSlots", stationId?.toString(), dateStart?.toString()],
     queryFn: async () => {
       if (dateStart === null) return [];
@@ -37,7 +39,10 @@ export function useGetAvailableSlots(
           dateEnd,
         );
         return backendSlots.length > 0
-          ? (backendSlots as Array<{ isAvailable: boolean; slotTime: bigint }>)
+          ? backendSlots.map((s) => ({
+              isAvailable: s.isAvailable,
+              slotTime: BigInt(s.slotTime),
+            }))
           : localSlots;
       } catch {
         return localSlots;
@@ -154,20 +159,15 @@ export function useCancelBooking() {
 }
 
 /**
- * Generate all slots from 8am to 10pm in 10-minute intervals (84 slots).
- * Using 10-min granularity so that e.g. a 20-min booking at 11:30
- * blocks 11:30 and 11:40, making 11:50 the next available slot.
+ * Generate all slots for a full 24-hour day in 10-minute intervals (144 slots).
+ * dayStartNs is the midnight timestamp in nanoseconds for the selected day.
  */
-export function generateAllSlots(
-  dayStart8amNs: bigint,
-): Array<{ isAvailable: boolean; slotTime: bigint }> {
-  const slots: Array<{ isAvailable: boolean; slotTime: bigint }> = [];
-  const startMs = Number(dayStart8amNs / 1_000_000n);
-  // 8am to 10pm = 840 minutes, 10-min slots = 84 slots
-  for (let i = 0; i < 84; i++) {
+export function generateAllSlots(dayStartNs: bigint): SlotData[] {
+  const slots: SlotData[] = [];
+  const startMs = Number(dayStartNs / 1_000_000n);
+  // 24 hours * 6 slots/hr = 144 slots
+  for (let i = 0; i < 144; i++) {
     const slotMs = startMs + i * 10 * 60 * 1000;
-    const slotDate = new Date(slotMs);
-    if (slotDate.getHours() >= 22) break;
     slots.push({
       slotTime: BigInt(slotMs) * 1_000_000n,
       isAvailable: true,
