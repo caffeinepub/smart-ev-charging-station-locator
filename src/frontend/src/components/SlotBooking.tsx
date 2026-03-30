@@ -66,12 +66,12 @@ function formatDayLabel(date: Date, today: Date): string {
   });
 }
 
-/** Returns 8am and 10pm nanosecond timestamps for the given day */
+/** Returns midnight to midnight (all 10-min slots) nanosecond timestamps for the given day */
 function getDayRange(date: Date): { start: bigint; end: bigint } {
   const start = new Date(date);
-  start.setHours(8, 0, 0, 0);
+  start.setHours(0, 0, 0, 0);
   const end = new Date(date);
-  end.setHours(22, 0, 0, 0);
+  end.setHours(23, 50, 0, 0);
   return {
     start: BigInt(start.getTime()) * 1_000_000n,
     end: BigInt(end.getTime()) * 1_000_000n,
@@ -425,7 +425,7 @@ export function SlotBooking({
           }}
         >
           <Clock size={12} />
-          Available Slots (8am – 10pm · 10min intervals)
+          Available Slots (24hrs · 10min intervals)
         </div>
 
         {slotsLoading ? (
