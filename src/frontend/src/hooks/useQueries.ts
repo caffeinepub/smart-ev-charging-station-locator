@@ -154,15 +154,18 @@ export function useCancelBooking() {
 }
 
 /**
- * Generate all slots from 8am to 10pm (28 half-hour slots).
+ * Generate all slots from 8am to 10pm in 10-minute intervals (84 slots).
+ * Using 10-min granularity so that e.g. a 20-min booking at 11:30
+ * blocks 11:30 and 11:40, making 11:50 the next available slot.
  */
 export function generateAllSlots(
   dayStart8amNs: bigint,
 ): Array<{ isAvailable: boolean; slotTime: bigint }> {
   const slots: Array<{ isAvailable: boolean; slotTime: bigint }> = [];
   const startMs = Number(dayStart8amNs / 1_000_000n);
-  for (let i = 0; i < 28; i++) {
-    const slotMs = startMs + i * 30 * 60 * 1000;
+  // 8am to 10pm = 840 minutes, 10-min slots = 84 slots
+  for (let i = 0; i < 84; i++) {
+    const slotMs = startMs + i * 10 * 60 * 1000;
     const slotDate = new Date(slotMs);
     if (slotDate.getHours() >= 22) break;
     slots.push({

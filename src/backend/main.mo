@@ -158,7 +158,9 @@ actor {
     stationBookings.toArray();
   };
 
-  // Returns slots 8am-10pm with real booking status
+  // Returns slots 8am-10pm in 10-minute intervals with real booking status.
+  // Using 10-minute slots means a 20-min booking at 11:30 blocks 11:30 & 11:40,
+  // so 11:50 shows as available (not 12:00).
   public query func getAvailableSlots(
     stationId : Nat,
     dateStart : Int,
@@ -166,23 +168,26 @@ actor {
   ) : async [{ slotTime : Int; isAvailable : Bool }] {
     let slots = List.empty<{ slotTime : Int; isAvailable : Bool }>();
     var currentTime = dateStart;
-    let slotDuration = 1_800_000_000_000; // 30 min in nanoseconds
+    let slotInterval = 600_000_000_000; // 10 min in nanoseconds
 
-    while (currentTime + slotDuration <= dateEnd) {
+    while (currentTime < dateEnd) {
       var isAvailable = true;
-      let slotEnd = currentTime + slotDuration;
 
       bookings.values().forEach(func(booking) {
         if (
           booking.stationId == stationId and
-          (booking.status == #confirmed or booking.status == #pending) and
-          currentTime < (booking.scheduledTime + booking.estimatedDurationMinutes.toInt() * 60_000_000_000) and
-          slotEnd > booking.scheduledTime
-        ) { isAvailable := false };
+          (booking.status == #confirmed or booking.status == #pending)
+        ) {
+          let bookingEnd = booking.scheduledTime + booking.estimatedDurationMinutes.toInt() * 60_000_000_000;
+          // A 10-min slot starting at currentTime is blocked if it overlaps the booking window
+          if (currentTime < bookingEnd and (currentTime + slotInterval) > booking.scheduledTime) {
+            isAvailable := false;
+          };
+        };
       });
 
       slots.add({ slotTime = currentTime : Int; isAvailable });
-      currentTime += slotDuration;
+      currentTime += slotInterval;
     };
     slots.toArray();
   };

@@ -2655,7 +2655,7 @@ export function EVChargingApp() {
           bottom: showInfoCard
             ? 220
             : sheetExpanded
-              ? "calc(68vh + 16px)"
+              ? "calc(30vh + 16px)"
               : "calc(200px + 16px)",
           right: 12,
           zIndex: 450,
@@ -2851,7 +2851,7 @@ export function EVChargingApp() {
               WebkitBackdropFilter: IOS.blur,
               borderRadius: `${IOS.radius.md}px ${IOS.radius.md}px 0 0`,
               boxShadow: IOS.shadow.sheet,
-              maxHeight: "68vh",
+              maxHeight: "30vh",
               display: "flex",
               flexDirection: "column",
             }}

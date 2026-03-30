@@ -425,7 +425,7 @@ export function SlotBooking({
           }}
         >
           <Clock size={12} />
-          Available Slots (8am – 10pm)
+          Available Slots (8am – 10pm · 10min intervals)
         </div>
 
         {slotsLoading ? (
@@ -451,7 +451,7 @@ export function SlotBooking({
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(90px, 1fr))",
+              gridTemplateColumns: "repeat(auto-fill, minmax(72px, 1fr))",
               gap: 8,
             }}
           >
@@ -493,13 +493,13 @@ export function SlotBooking({
                     setSelectedSlotTime(isSelected ? null : slot.slotTime)
                   }
                   style={{
-                    padding: "10px 6px",
+                    padding: "8px 4px",
                     borderRadius: 10,
                     border: `2px solid ${borderColor}`,
                     background: bgColor,
                     color: textColor,
                     cursor,
-                    fontSize: 11,
+                    fontSize: 10,
                     fontWeight: 700,
                     fontFamily: FONT,
                     transition: "all 0.12s",
